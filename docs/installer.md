@@ -312,19 +312,26 @@ work.
    3. the ISO path saved in settings.dat;
    4. the recovery flow.
 4. Portable mode: the ISO path saved in settings.dat, then the
-   console ISO prompt.
+   disc image file dialog (asked until a usable GM2E8P image is picked;
+   cancel exits with code 1). The picked path, and a working `--iso`, are
+   saved as settings.dat `iso=`.
+
+All of this runs before the game window is created, so the dialog and
+message boxes can't end up behind a (fullscreen) game window. Images are
+checked like `--extract-iso` does (RVZ/NKit/other games are refused with
+the reason).
 
 **Recovery flow:**
-1. The port explains what's wrong on the console. When stdin is interactive,
-   it also shows a message box with *Select ISO...* / *Quit*.
-2. It asks for an ISO with the console prompt.
+1. The port explains what's wrong on the console and in a message box with
+   *Select ISO...* / *Quit*.
+2. It asks for an ISO in the file dialog (console prompt on non-Windows).
 3. It extracts the ISO into `%LOCALAPPDATA%\SMB2\gamedata`. This
-   needs no admin rights. The 5% progress lines go to the console, and SDL
-   events are pumped so the window doesn't freeze.
+   needs no admin rights. The 5% progress lines go to the console (the game
+   window doesn't exist yet).
 4. It loads the extracted copy.
 
-If extraction fails, it shows the error and asks again. A blank answer exits
-with code 1 in installed mode.
+If the image is unusable or extraction fails, it shows the error and asks
+again. Cancelling exits with code 1.
 
 The environment variable `SMB2_PC_LOCAL_GAMEDATA` overrides the recovery
 target. It exists for tests.
@@ -336,6 +343,7 @@ target. It exists for tests.
 | `SMB2_DVD_TRACE=1` | Logs every game file read: `[dvdtrace] <entry> <name> ofs= len=` |
 | `SMB2_TEST_WRITE_LIMIT=<bytes>` | Extraction writes fail with ENOSPC after that many bytes (disk-full simulation) |
 | `SMB2_PC_LOCAL_GAMEDATA=<dir>` | Overrides the recovery extraction target |
+| `SMB2_ISO_PICK_TEST=<path>\|<path>\|cancel` | Answers the disc image picker instead of the file dialog, one entry per ask (none left = cancel); message boxes become log lines |
 | `SMB2_PC_TEST_OLD_USERDATA=<dir>` | Old-name userdata folder to migrate (instead of the real `%APPDATA%\SMB2 PC Port`) |
 | `SMB2_PC_TEST_OLD_LOCAL_GAMEDATA=<dir>` | Old-name recovery copy to migrate (instead of the real one) |
 

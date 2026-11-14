@@ -431,8 +431,15 @@ void pcs_apply_startup(void) {
     s_active_msaa = g_pcs.msaa;
     if (g_pcs.display_mode == PCS_FULLSCREEN)
         pcs_apply_video();
-    else
+    else {
+        int w = 0, h = 0;
         pcs_on_window_resized();
+        platform_drawable_size(&w, &h);
+        printf("[settings] video: %s %dx%d (drawable %dx%d) vsync=%d\n",
+               g_pcs.display_mode == PCS_BORDERLESS ? "borderless" : "windowed",
+               g_pcs.width, g_pcs.height, w, h, g_pcs.vsync);
+        fflush(stdout);
+    }
     pcs_apply_volume();
 }
 

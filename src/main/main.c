@@ -290,6 +290,15 @@ int main(int argc, char* argv[]) {
         .opengl = g_pcs.renderer != PCS_RENDERER_D3D12,
     };
 
+    /* Locate the game data before the window exists: --gamedata, --iso,
+     * install.ini gamedata, saved settings.dat ISO path, or the file dialog
+     * (platform_resolve_game_data).  A (fullscreen) game window would cover
+     * the dialog. */
+    if (!platform_resolve_game_data(g_gamedata_arg, g_iso_arg)) {
+        pc_user_msg("No game data - exiting.\n");
+        return 1;
+    }
+
     /* Initialize platform */
     printf("DEBUG: Calling platform_init...\n");
     fflush(stdout);
@@ -304,12 +313,6 @@ int main(int argc, char* argv[]) {
      * show_resolution_picker() is unused. */
     (void)show_resolution_picker;
 
-    /* Locate the game data: --gamedata, --iso, install.ini gamedata,
-     * saved settings.dat ISO path, or prompt (platform_resolve_game_data) */
-    if (!platform_resolve_game_data(g_gamedata_arg, g_iso_arg) && pc_installed()) {
-        platform_shutdown();
-        return 1;
-    }
     platform_apply_window_icon();
 #ifdef SMB2_LINK_GAME
     /* after the (possibly interactive / extracting) data step: the watchdog

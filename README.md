@@ -56,7 +56,9 @@ Download a release from the
   data from it. Start the game from the "SMB2" shortcut. Saves and settings go
   to `%APPDATA%\SMB2\installed\`. Details: [installer/README.txt](installer/README.txt).
 - **Portable zip**: unpack it anywhere and run `smb2_pc_port.exe`. On the first
-  start it asks for your disc image (or pass `--iso <path>`) and remembers it.
+  start the game asks for your disc image in a file dialog and remembers it
+  (`--iso <path>` works too and is remembered the same way). If the saved image
+  can't be opened later, it asks again; cancelling quits the game.
   The memory card is stored next to the exe, settings in
   `%APPDATA%\SMB2\smb2_pc_port\`.
 
@@ -98,7 +100,7 @@ They are stored in `settings.dat`. Command-line options override them for one
 run; `smb2_pc_port.exe --help` lists them all, the main ones:
 
 ```
---iso <file>          disc image (GM2E8P .iso/.gcm)
+--iso <file>          disc image (GM2E8P .iso/.gcm); saved for later starts
 --gamedata <dir>      extracted game data folder instead of an image
 --renderer gl|d3d12   renderer
 --fps <n>             60 (default), 120, 144, 240, ..., display or uncapped

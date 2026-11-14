@@ -24,7 +24,7 @@ Where files go
   memory card next to its exe; the two versions do not share saves.
 
 If you skipped the disc image step in Setup, or the game data is missing or damaged, the game
-asks for your disc image when it starts and extracts it into
+asks for your disc image in a file dialog when it starts and extracts it into
 %LOCALAPPDATA%\SMB2\gamedata (no administrator rights needed).
 To redo it for all users, run Setup again and pick the disc image.
 

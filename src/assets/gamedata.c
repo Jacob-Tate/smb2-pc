@@ -437,6 +437,13 @@ static int check_image(const char* iso, uint8_t hdr[0x440], int64_t* out_size,
     return GD_OK;
 }
 
+int gamedata_check_image(const char* iso, char* msg, size_t msgsz)
+{
+    uint8_t hdr[0x440];
+    int64_t size;
+    return check_image(iso, hdr, &size, msg, msgsz);
+}
+
 static uint64_t free_space(const char* dir)
 {
 #ifdef _WIN32

@@ -34,6 +34,9 @@ typedef void (*GdProgressFn)(uint64_t done, uint64_t total, void* user);
  * one-line message. */
 int gamedata_extract(const char* iso, const char* dir, GdProgressFn cb, void* user,
                      char* msg, size_t msgsz);
+/* Is iso a plain GM2E8P disc image (not RVZ/NKit/another game)?  Returns
+ * GD_OK or an error code + a one-line reason for the user. */
+int gamedata_check_image(const char* iso, char* msg, size_t msgsz);
 /* Full check: every manifest file present with the recorded size + CRC32. */
 int gamedata_verify(const char* dir, GdProgressFn cb, void* user, char* msg, size_t msgsz);
 /* Cheap runtime check: manifest parses, disc id matches, every file exists

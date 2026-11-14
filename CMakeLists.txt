@@ -417,7 +417,7 @@ if(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Windows")
         ${SDL2_LIBRARIES}
         opengl32
         m kernel32 user32 gdi32 winmm imm32 ole32 oleaut32
-        version uuid advapi32 setupapi shell32 dinput8 winhttp
+        version uuid advapi32 setupapi shell32 comdlg32 dinput8 winhttp
     )
 else()
     target_link_libraries(smb2_pc_port

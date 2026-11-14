@@ -696,14 +696,58 @@ int platform_save_list(char*** out_names) {
     return count;
 }
 
-/* ISO picker */
+/* ISO picker.  Windows: the system "Open" dialog (the game window doesn't
+ * exist yet, so nothing can cover it); elsewhere: a console prompt.
+ * SMB2_ISO_PICK_TEST="<path>|<path>|cancel" answers the picker in tests, one
+ * entry per call (exhausted = cancel), and turns the message boxes into log
+ * lines. */
+#ifdef _WIN32
+#include <windows.h>
+#include <commdlg.h>
+#include <objbase.h>
+#endif
 
-bool platform_show_iso_picker(char** out_path) {
-    /* SDL2 has no native file dialog: ask on the console */
-    pc_user_msg("\n=== ISO Selector ===\n");
-    pc_user_msg("Enter path to GameCube ISO/GCM file (blank to skip):\n> ");
+static bool iso_pick_test_active(void) {
+    const char* t = getenv("SMB2_ISO_PICK_TEST");
+    return t && t[0];
+}
 
+/* Tell the user (log + message box). */
+static void iso_notice(const char* title, const char* text, bool error) {
+    pc_user_msg("%s\n", text);
+    if (!iso_pick_test_active())
+        SDL_ShowSimpleMessageBox(error ? SDL_MESSAGEBOX_ERROR : SDL_MESSAGEBOX_INFORMATION,
+                                 title, text, (SDL_Window*)platform_sdl_window());
+}
+
+static bool iso_pick_test(char** out_path) {
+    static int s_call;
+    const char* t = getenv("SMB2_ISO_PICK_TEST");
+    int i = 0;
+    while (i < s_call && t) {
+        t = strchr(t, '|');
+        if (t) t++;
+        i++;
+    }
+    s_call++;
+    if (t) {
+        size_t n = strcspn(t, "|");
+        if (n && !(n == 6 && !strncmp(t, "cancel", 6))) {
+            *out_path = malloc(n + 1);
+            memcpy(*out_path, t, n);
+            (*out_path)[n] = 0;
+            printf("[iso] picker (SMB2_ISO_PICK_TEST): %s\n", *out_path);
+            return true;
+        }
+    }
+    printf("[iso] picker (SMB2_ISO_PICK_TEST): cancel\n");
+    return false;
+}
+
+static bool iso_pick_console(char** out_path) {
     char input[1024];
+    pc_user_msg("\n=== Disc image ===\n");
+    pc_user_msg("Enter the path of your GM2E8P .iso/.gcm (blank to quit):\n> ");
     if (fgets(input, sizeof(input), stdin)) {
         input[strcspn(input, "\r\n")] = '\0';
         /* Strip surrounding quotes (Windows "Copy as path" adds them) */
@@ -720,6 +764,99 @@ bool platform_show_iso_picker(char** out_path) {
         }
     }
     return false;
+}
+
+#ifdef _WIN32
+/* UTF-16 path -> ANSI code page (what fopen() and settings.dat use);
+ * falls back to the 8.3 name when the long one doesn't fit the code page. */
+static bool wide_path_to_acp(const WCHAR* w, char** out) {
+    char buf[4096];
+    WCHAR sh[4096];
+    int pass;
+    for (pass = 0; pass < 2; pass++) {
+        BOOL lossy = FALSE;
+        bool utf8 = GetACP() == CP_UTF8;
+        const WCHAR* src = w;
+        if (pass == 1) {
+            DWORD n = GetShortPathNameW(w, sh, (DWORD)(sizeof sh / sizeof sh[0]));
+            if (!n || n >= sizeof sh / sizeof sh[0]) return false;
+            src = sh;
+        }
+        if (WideCharToMultiByte(CP_ACP, utf8 ? 0 : WC_NO_BEST_FIT_CHARS, src, -1, buf,
+                                (int)sizeof buf, NULL, utf8 ? NULL : &lossy) > 0 && !lossy) {
+            *out = strdup(buf);
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Returns 1 = picked, 0 = cancelled, -1 = the dialog itself failed. */
+static int iso_pick_dialog(const char* initial, char** out_path) {
+    WCHAR file[4096], dir[4096];
+    OPENFILENAMEW ofn;
+    HRESULT co = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    int rc = 0;
+    dir[0] = 0;
+    if (initial && MultiByteToWideChar(CP_ACP, 0, initial, -1, dir, 4096) > 0) {
+        WCHAR* s = wcsrchr(dir, L'\\');
+        WCHAR* s2 = wcsrchr(dir, L'/');
+        if (s2 > s) s = s2;
+        if (s) *s = 0; else dir[0] = 0;
+    }
+    for (;;) {
+        file[0] = 0;
+        memset(&ofn, 0, sizeof ofn);
+        ofn.lStructSize = sizeof ofn;
+        ofn.lpstrFilter = L"GameCube disc image (*.iso;*.gcm)\0*.iso;*.gcm\0All files (*.*)\0*.*\0";
+        ofn.lpstrFile = file;
+        ofn.nMaxFile = 4096;
+        ofn.lpstrInitialDir = dir[0] ? dir : NULL;
+        ofn.lpstrTitle = L"Select your Super Monkey Ball 2 disc image (USA, GM2E8P)";
+        ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY |
+                    OFN_NOCHANGEDIR;
+        printf("[iso] showing the disc image file dialog\n");
+        fflush(stdout);
+        if (!GetOpenFileNameW(&ofn)) {
+            DWORD err = CommDlgExtendedError();
+            if (err) {
+                fprintf(stderr, "[iso] file dialog failed (error 0x%lx)\n", (unsigned long)err);
+                rc = -1;
+            }
+            break;
+        }
+        if (wide_path_to_acp(file, out_path)) {
+            pc_user_msg("Selected: %s\n", *out_path);
+            rc = 1;
+            break;
+        }
+        iso_notice("SMB2",
+                   "The game can't open files whose path has characters outside the system's "
+                   "language settings. Move or rename the disc image (for example "
+                   "C:\\Games\\smb2.iso) and select it again.", true);
+    }
+    if (SUCCEEDED(co)) CoUninitialize();
+    return rc;
+}
+#endif
+
+/* Ask for a disc image path (malloc'd); false = cancelled. */
+static bool iso_pick(const char* initial, char** out_path) {
+    *out_path = NULL;
+    if (iso_pick_test_active()) return iso_pick_test(out_path);
+#ifdef _WIN32
+    {
+        int rc = iso_pick_dialog(initial, out_path);
+        if (rc >= 0) return rc == 1;
+    }
+#else
+    (void)initial;
+#endif
+    return iso_pick_console(out_path);
+}
+
+bool platform_show_iso_picker(char** out_path) {
+    return iso_pick(NULL, out_path);
 }
 
 /* Settings */
@@ -786,40 +923,77 @@ bool platform_show_settings_menu(GameSettings* settings) {
     return true;
 }
 
-/* Startup ISO flow: try the saved path, otherwise prompt until a valid
- * image is given or the user skips (blank input). */
-bool platform_startup_iso(void) {
+/* A checked, opened GM2E8P image, or NULL with the reason in msg. */
+static ISOArchive* open_disc_image(const char* path, char* msg, size_t n) {
+    ISOArchive* arc;
+    if (gamedata_check_image(path, msg, n) != GD_OK) return NULL;
+    arc = iso_open(path);
+    if (!arc) snprintf(msg, n, "%s could not be read as a GameCube disc image", path);
+    return arc;
+}
+
+static void load_saved_iso_setting(void) {
+    free(s_settings.iso_path);
     settings_load(&s_settings);
+}
+
+/* settings.dat iso=, so the next start doesn't ask again */
+static void remember_iso_path(const char* path) {
+    if (s_settings.iso_path && !strcmp(s_settings.iso_path, path)) return;
+    free(s_settings.iso_path);
+    s_settings.iso_path = strdup(path);
+    settings_save(&s_settings);
+    printf("[iso] disc image saved in settings.dat: %s\n", path);
+}
+
+/* Ask until the user picks a usable image (returned, malloc'd) or cancels
+ * (NULL).  With out_arc the image is also opened. */
+static char* pick_disc_image(const char* initial, ISOArchive** out_arc) {
+    for (;;) {
+        char msg[1024], text[1400];
+        char* path = NULL;
+        ISOArchive* arc = NULL;
+        if (!iso_pick(initial, &path)) return NULL;
+        if (out_arc) arc = open_disc_image(path, msg, sizeof msg);
+        if (arc || (!out_arc && gamedata_check_image(path, msg, sizeof msg) == GD_OK)) {
+            if (out_arc) *out_arc = arc;
+            return path;
+        }
+        snprintf(text, sizeof text, "This file can't be used:\n%s\n\nSelect your Super Monkey "
+                 "Ball 2 disc image (USA, GM2E8P, .iso/.gcm).", msg);
+        iso_notice("SMB2 - unusable disc image", text, true);
+        free(path);
+    }
+}
+
+static const char s_no_image_text[] =
+    "No disc image selected - the game can't start without one.";
+
+/* Portable startup: the saved path, otherwise ask until a usable image is
+ * picked.  false = cancelled (the game can't run without its data). */
+bool platform_startup_iso(void) {
+    char msg[1024], text[1400];
+    char* path;
+    load_saved_iso_setting();
 
     if (s_settings.iso_path) {
-        s_iso_archive = iso_open(s_settings.iso_path);
+        s_iso_archive = open_disc_image(s_settings.iso_path, msg, sizeof msg);
         if (s_iso_archive) {
             printf("Loaded ISO from saved settings: %s\n", s_settings.iso_path);
             return true;
         }
-        fprintf(stderr, "Saved ISO path could not be opened: %s\n", s_settings.iso_path);
-        free(s_settings.iso_path);
-        s_settings.iso_path = NULL;
+        snprintf(text, sizeof text, "The saved disc image can't be used:\n%s\n\n"
+                 "Select your disc image again.", msg);
+        iso_notice("SMB2", text, false);
     }
 
-    while (!s_iso_archive) {
-        char* path = NULL;
-        if (!platform_show_iso_picker(&path)) {
-            printf("No ISO selected - continuing without game assets.\n");
-            return false;
-        }
-        s_iso_archive = iso_open(path);
-        if (s_iso_archive) {
-            s_settings.iso_path = path;
-            settings_save(&s_settings);
-        } else {
-            fprintf(stderr, "Could not open '%s'.\n"
-                    "If this is an RVZ, convert it first:\n"
-                    "  dolphin-tool convert -i game.rvz -o game.iso -f iso\n"
-                    "(or Dolphin GUI: right-click game -> Convert File -> ISO)\n", path);
-            free(path);
-        }
+    path = pick_disc_image(s_settings.iso_path, &s_iso_archive);
+    if (!path) {
+        iso_notice("SMB2", s_no_image_text, false);
+        return false;
     }
+    remember_iso_path(path);
+    free(path);
     return true;
 }
 
@@ -827,19 +1001,19 @@ ISOArchive* platform_get_iso_archive(void) {
     return s_iso_archive;
 }
 
+/* --iso: opened and, when usable, saved like a picked image */
 bool platform_load_iso(const char* path) {
-    if (s_iso_archive) {
-        iso_close(s_iso_archive);
+    char msg[1024];
+    ISOArchive* arc = open_disc_image(path, msg, sizeof msg);
+    if (!arc) {
+        fprintf(stderr, "%s\n", msg);
+        return false;
     }
-    s_iso_archive = iso_open(path);
-    if (s_iso_archive && s_settings.iso_path) {
-        free(s_settings.iso_path);
-    }
-    if (s_iso_archive) {
-        s_settings.iso_path = strdup(path);
-        settings_save(&s_settings);
-    }
-    return s_iso_archive != NULL;
+    if (s_iso_archive) iso_close(s_iso_archive);
+    s_iso_archive = arc;
+    load_saved_iso_setting();
+    remember_iso_path(path);
+    return true;
 }
 
 static const PlatformVTable sdl2_vtable = {
@@ -1013,17 +1187,10 @@ static void recover_progress(uint64_t done, uint64_t total, void* user) {
         pc_user_msg("  extracting game data... %3d%%\n", pct);
         r->last_pct = pct;
     }
-    SDL_PumpEvents();   /* keep the (still black) window responsive */
 }
 
-static void recover_box(const char* title, const char* text, bool error) {
-    if (pc_stdin_interactive())
-        SDL_ShowSimpleMessageBox(error ? SDL_MESSAGEBOX_ERROR : SDL_MESSAGEBOX_INFORMATION,
-                                 title, text, (SDL_Window*)platform_sdl_window());
-}
-
-/* Installed mode, no usable game data: explain, pick an ISO with the usual
- * prompt, extract it into %LOCALAPPDATA%\SMB2\gamedata (per user,
+/* Installed mode, no usable game data: explain, pick an ISO in the file
+ * dialog, extract it into %LOCALAPPDATA%\SMB2\gamedata (per user,
  * no admin rights needed) and load that. */
 bool platform_recover_gamedata(const char* why) {
     const char* dest = pc_local_gamedata_dir();
@@ -1034,11 +1201,11 @@ bool platform_recover_gamedata(const char* why) {
     }
     snprintf(text, sizeof text,
              "The game data is missing or damaged:\n%s\n\n"
-             "Select your Super Monkey Ball 2 (USA, GM2E8P) disc image (.iso/.gcm) in the console "
+             "Select your Super Monkey Ball 2 (USA, GM2E8P) disc image (.iso/.gcm) in the next "
              "window. It will be extracted to\n%s\n(about 1 GB, no administrator rights needed).",
              why, dest);
     pc_user_msg("\n%s\n", text);
-    if (pc_stdin_interactive()) {
+    if (!iso_pick_test_active()) {
         const SDL_MessageBoxButtonData buttons[2] = {
             { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Select ISO..." },
             { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Quit" },
@@ -1050,11 +1217,15 @@ bool platform_recover_gamedata(const char* why) {
         if (SDL_ShowMessageBox(&box, &which) == 0 && which != 1) return false;
     }
     for (;;) {
-        char* path = NULL;
+        char* path;
         char msg[1024];
         RecoverProg rp = { -1 };
         int rc;
-        if (!platform_show_iso_picker(&path)) return false;
+        path = pick_disc_image(NULL, NULL);
+        if (!path) {
+            iso_notice("SMB2", s_no_image_text, false);
+            return false;
+        }
         pc_user_msg("Extracting %s\n  to %s ...\n", path, dest);
         rc = gamedata_extract(path, dest, recover_progress, &rp, msg, sizeof msg);
         free(path);
@@ -1062,17 +1233,16 @@ bool platform_recover_gamedata(const char* why) {
             pc_user_msg("Game data extracted (%s).\n", msg);
             return platform_load_gamedata(dest);
         }
-        pc_user_msg("Extraction failed (error %d): %s\nTry another file, or leave it blank to quit.\n",
-                    rc, msg);
-        snprintf(text, sizeof text, "Extraction failed:\n%s", msg);
-        recover_box("SMB2", text, true);
+        snprintf(text, sizeof text, "Extraction failed (error %d):\n%s\n\nSelect another file.",
+                 rc, msg);
+        iso_notice("SMB2", text, true);
     }
 }
 
 /* Game data search order (docs/installer.md): --gamedata, --iso, install.ini
  * gamedata, (installed) the per-user re-extracted copy, the settings.dat ISO
- * path, the ISO prompt.  Portable runs without --gamedata use
- * --iso -> settings -> prompt. */
+ * path, the file dialog.  Portable runs without --gamedata use
+ * --iso -> settings -> file dialog.  Runs before the window is created. */
 bool platform_resolve_game_data(const char* gamedata_arg, const char* iso_arg) {
     char msg[1024];
     const char* why = "no game data folder is configured";
@@ -1101,18 +1271,16 @@ bool platform_resolve_game_data(const char* gamedata_arg, const char* iso_arg) {
             platform_load_gamedata(local))
             return true;
     }
-    settings_load(&s_settings);
+    load_saved_iso_setting();
     if (s_settings.iso_path) {
-        s_iso_archive = iso_open(s_settings.iso_path);
+        s_iso_archive = open_disc_image(s_settings.iso_path, msg, sizeof msg);
         if (s_iso_archive) {
             printf("Loaded ISO from saved settings: %s\n", s_settings.iso_path);
             return true;
         }
-        fprintf(stderr, "Saved ISO path could not be opened: %s\n", s_settings.iso_path);
+        fprintf(stderr, "Saved ISO can't be used: %s\n", msg);
     }
-    if (platform_recover_gamedata(why)) return true;
-    pc_user_msg("No game data - exiting.\n");
-    return false;
+    return platform_recover_gamedata(why);
 }
 
 /* Window/taskbar icon from the disc in use (generated, never shipped). */
