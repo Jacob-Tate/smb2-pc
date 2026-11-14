@@ -9,8 +9,8 @@ the GameCube hardware and SDK. It is **not an emulator**.
 
 **You need your own, legally obtained copy of the game**: a disc image
 (`.iso` / `.gcm`) of the USA release, disc ID **GM2E8P**, made from a disc you
-own. This repository contains **no game assets** (no textures, models, audio,
-text or disc files). The game data is read from your disc image at run time.
+own. This repository contains **no game assets** (no textures, models, audio
+or disc files). The game data is read from your disc image at run time.
 
 ## Features
 
