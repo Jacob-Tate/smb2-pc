@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build the Windows installer: SMB2_PC_Setup_<version>.exe (app name "SMB2";
-# the setup file name is unchanged since 1.0.0 so download links/scripts keep working)
+# Build the Windows installer: SMB2_PC_Setup_<version>.exe (app name "SMB2"; the
+# updater and download links rely on the SMB2_PC_Setup_ file name)
 #
 #   installer/build.sh [options]
 #     --version V        version string (default: $SMB2_VERSION or 1.0.0)
@@ -15,7 +15,7 @@
 # Environment:
 #   MAKENSIS / NSISDIR      makensis to use.  Default: system makensis, else a
 #                           local copy unpacked from the Ubuntu nsis debs into
-#                           <pc_port>/../tools_nsis (no root needed; see README section in smb2.nsi)
+#                           <pc_port>/../tools_nsis (no root needed)
 #   LLVM_MINGW_ROOT         llvm-mingw toolchain for the x64 build
 #                           (default <pc_port>/../toolchains/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64)
 #   SMB2_DECOMP_DIR         decomp checkout (default <pc_port>/../decomp)
@@ -64,8 +64,7 @@ build_one() { # dir toolchain extra...
             -DSMB2_VERSION="$VERSION" "$@"
     else
         # re-run the configure step: the source lists are globbed, so new
-        # files (e.g. src/game/shim/musyx_fx.c) need a fresh glob; the
-        # version goes into the exe's VERSIONINFO
+        # files need a fresh glob; the version goes into the exe's VERSIONINFO
         cmake -DSMB2_VERSION="$VERSION" "$PORT/$dir" >/dev/null
     fi
     ninja -C "$PORT/$dir"

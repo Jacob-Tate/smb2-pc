@@ -1,42 +1,11 @@
-/* MusyX auxiliary effects: ReverbHI and Chorus, transcribed from main.dol.
- *
- * On the GameCube the MusyX aux effects are CPU code: once per 5 ms synth
- * frame salHandleAuxProcessing (0x8004C398) hands each studio's aux A / aux B
- * bus - 160 samples of s32 L, R and S at 32 kHz, 16-bit sample scale - to the
- * registered callback, which processes it in place; the DSP (AX ucode) mixes
- * the result back into the main bus two frames later (see audio_miniaudio.c).
- * This game registers the stock MusyX effects (sound.c SoundEffectInit):
- *   aux A: sndAuxCallbackReverbHI (0x8005205C) on lbl_1_bss_259B0
- *   aux B: sndAuxCallbackChorus   (0x80053430) on lbl_1_bss_25B90
- * Everything below follows the DOL instruction by instruction - float vs
- * int, operation order, single rounding of every fadds/fmuls, fused
- * fmadds/fnmsubs, truncating fctiwz / round-to-nearest fctiw - so the
- * effects produce the same integers as the original for the same input:
- *   sndAuxCallbackReverbHI              0x8005205C
- *   sndAuxCallbackUpdateSettingsReverbHI 0x800520B8
- *   sndAuxCallbackPrepareReverbHI       0x80052110
- *   sndAuxCallbackShutdownReverbHI      0x80052150 (g_something_with_sound8_wrapper)
- *   ReverbHICreate 0x80052174, ReverbHIModify 0x80052640, DoCrossTalk 0x80052834,
- *   HandleReverb 0x800529C4, ReverbHICallback 0x80052ED0, ReverbHIFree 0x80052FC8
- *   do_src1 0x800530AC, do_src2 0x80053244, sndAuxCallbackChorus 0x80053430,
- *   sndAuxCallbackUpdateSettingsChorus 0x8005379C,
- *   sndAuxCallbackPrepareChorus 0x80053834, sndAuxCallbackShutdownChorus 0x80053A94
- *   tables: comb/all-pass lengths 0x80116320, rsmpTab12khz 0x80116340
- *
- * Fused multiply-add: Gekko's fmadds computes a*c+b and rounds once to
- * single.  Dolphin (the reference the port is checked against) evaluates it
- * in double and rounds that to single; for single-precision operands the
- * product is exact in double, so (float)((double)a * c + b) is exactly
- * Dolphin's result (it can differ from the hardware's single rounding only
- * when the double sum lands exactly on a single-precision tie).
- * Denormals are kept (the GC runs with FPSCR[NI] = 0).
- *
- * Threading: the effect state lives in port-side "mirror" objects (the
- * DOL's structs hold pointers and do not fit the game's 32-bit layout on
- * x64).  Prepare / UpdateSettings / Shutdown, called by the game, queue the
- * DOL function to run on the audio worker in command order (adsp_run), so the
- * worker never sees a half-modified effect and the effect timeline is
- * deterministic; the game's struct only supplies the settings fields. */
+/* MusyX auxiliary effects ReverbHI (aux A) and Chorus (aux B), transcribed
+ * from main.dol so they produce the same integers as the original: every
+ * single rounding, fused multiply-add, fctiwz / fctiw and operation order is
+ * kept.  The effect state lives in port-side mirrors of the game's structs
+ * and runs on the audio worker; Prepare / Update / Shutdown are queued to it
+ * in command order.  See docs/audio.md, Aux effects.
+ * The game registers them on lbl_1_bss_259B0 / lbl_1_bss_25B90 (sound.c).
+ * Tables: comb/all-pass lengths 0x80116320, rsmpTab12khz 0x80116340. */
 #include "shim.h"
 #include "audio_dsp.h"
 #include <stdio.h>
@@ -46,6 +15,8 @@
 /* ------------------------------------------------------------------ */
 /* Gekko arithmetic                                                    */
 
+/* Fused ops as Dolphin computes them: in double, rounded once to single
+ * (the product of two singles is exact in double). */
 static inline f32 fmadds(f32 a, f32 c, f32 b) { return (f32)((double)a * (double)c + (double)b); }
 static inline f32 fnmsubs(f32 a, f32 c, f32 b) { return (f32)(-((double)a * (double)c - (double)b)); }
 
@@ -714,7 +685,7 @@ static void rev_worker(void *arg)
         rev->crosstalk = msg->crosstalk;
     }
     switch (msg->op) {
-    case 0:   /* sndAuxCallbackPrepareReverbHI */
+    case 0:   /* sndAuxCallbackPrepareReverbHI (0x80052110) */
         rev->tempDisableFX = 0;
         if (rev->live) {   /* DOL: a second Prepare leaks the old buffers */
             ReverbHIFree(&rev->rv);
@@ -724,7 +695,7 @@ static void rev_worker(void *arg)
                            rev->crosstalk))
             rev->live = 1;
         break;
-    case 1:   /* sndAuxCallbackUpdateSettingsReverbHI */
+    case 1:   /* sndAuxCallbackUpdateSettingsReverbHI (0x800520B8) */
         if (!rev->live)
             break;
         rev->tempDisableFX = 1;
@@ -878,7 +849,7 @@ void sndSetAuxProcessingCallbacks(u8 studio, void (*auxA)(u8, void *, void *), v
 }
 
 /* ------------------------------------------------------------------ */
-/* self-test hooks (tools/musyxfx_test.c links this file directly)     */
+/* self-test hooks (tools/musyxfx/fxtest.c links this file directly)  */
 
 #ifdef MUSYX_FX_TEST
 void *musyx_fx_test_reverb_new(f32 coloration, f32 mix, f32 time, f32 damping, f32 preDelay, f32 crosstalk)

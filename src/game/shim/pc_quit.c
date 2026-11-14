@@ -1,22 +1,16 @@
-/* PC port: "Quit to Desktop".
+/* PC port: "Quit to Desktop".  The GC game has no quit, and a controller
+ * player in fullscreen needs one.  Offered in the pause menus (decomp
+ * pause_menu.c / hud.c, baseball_33.c), the PC settings rows
+ * (pc_settings_menu.c) and on the title / Mode Select screens.
  *
- * The GameCube game has no way to quit; on PC closing the window works, but a
- * fullscreen controller player had no way out.  This adds a "Quit to Desktop"
- * entry to the in-game pause menu (decomp pause_menu.c / hud.c, baseball's
- * own pause menu in baseball_33.c) and to the PC settings rows
- * (pc_settings_menu.c: Options > Game Screen page and the F1 overlay).
- *
- *  - Confirmation: pc_quit_confirm_* is the game's own yes/no box
- *    (hud.c sprite_save_disp: the small wood box, title, Yes / No with the
- *    flashing bracket cursor).  Default No.
- *  - Quitting: pc_quit_request() only sets a flag; video_finish_frame calls
- *    pc_quit_poll() once per frame, which keeps the game loop running until
- *    no memory card job (memcard.c state machine on top of card_shim.c) can
- *    still touch the card - a job waiting only for a button press on its
- *    result/error box counts as done - then saves settings.dat and exits(0),
- *    the same exit as SDL_QUIT, which now goes through here too.
- *  - Strings: PC-only text drawn with the game's menu font (font 3), one per
- *    game locale (0 en, 1 de, 2 fr, 3 es, 4 it, 5 ja). */
+ *  - Confirmation: the game's own yes/no box (hud.c sprite_save_disp),
+ *    default No.
+ *  - Quitting: pc_quit_request() only sets a flag.  pc_quit_poll() keeps the
+ *    game loop running until no memory card job can still touch the card (a
+ *    job only waiting for a button press on its result box counts as done),
+ *    then saves settings.dat and exits(0).  SDL_QUIT takes the same path.
+ *  - Strings: one per game locale (0 en, 1 de, 2 fr, 3 es, 4 it, 5 ja), drawn
+ *    with the menu font (font 3). */
 #include "gc_intrinsics.h"
 
 struct StickPoint;

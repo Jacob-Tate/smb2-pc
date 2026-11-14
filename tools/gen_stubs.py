@@ -22,17 +22,14 @@ OVERRIDES = {
     "g_ape_face_gma_buf": ("object", 4),
     "g_ape_face_tpl_buf": ("object", 4),
     # Race CPU table (race2.c fn_10_13B94: 0x80 x 16-byte entries). The map
-    # splits it at D338C/D3390/D3394 (debug-menu aliases of entry 0), so its
-    # own size is listed as 4; a 32-byte stub overflowed into D336C-D3374
-    # (camera mode 12 projection offsets) and broke frustum culling in race.
+    # splits it at D338C/D3390/D3394 (debug-menu aliases of entry 0), so it
+    # lists its size as 4.
     "lbl_1_bss_D3388": ("object", 0x800),
     # Dogfight profiling timers (dogfight_7.c: u32[0x12], cleared every frame).
-    # A 32-byte stub overflowed into D4CDC/D4CD8 (the COM-player mask), so on
-    # 32-bit the CPUs lost their 0x800 flag (no COM score list, wrong AI).
     "lbl_1_bss_D4CE4": ("object", 0x48),
     # Boat profiling counters (u32[0xC] and u32[0x13], updated every frame)
     # and the debug CPU path table (BoatCpuPoint[0x80]): sizes from the GC
-    # layout (D4334..D4364..D43B0, D43B4..), 32-byte stubs overflowed.
+    # layout (D4334..D4364..D43B0, D43B4..).
     "lbl_1_bss_D4334": ("object", 0x30),
     "lbl_1_bss_D4364": ("object", 0x4C),
     "lbl_1_bss_D43B4": ("object", 0x600),
@@ -57,7 +54,7 @@ TYPED_FUNCS = {
     "fn_8007682C": "double %s()",             # (double) -> double
 }
 
-# Symbols the link log lists but that a decomp TU now defines as a
+# Symbols the link log lists but that a decomp TU defines as a
 # tentative (common, -fcommon) definition.  A stub would win over the
 # common symbol with its GC-map size, which is too small on x64 (the TU's
 # real type holds pointers): BoatPlayer[8], GMAModel *[0x4D], SelNgcMenuWork.

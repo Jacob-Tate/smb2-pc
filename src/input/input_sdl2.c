@@ -477,8 +477,8 @@ void input_on_gamepad_axis(int controller, int axis, float value) {
  * (C stick) hold port 1's emulated GC pad value n (-128..127, y up, what
  * PADRead would return), which then goes through the game's own stick
  * processing like a real pad.  SU / SD / SL / SR (and AUTO) instead set the
- * value the game sees after that processing (+-100: full tilt), as before;
- * GXn / GYn set that processed value exactly (n != 0). */
+ * value the game sees after that processing (+-100: full tilt); GXn / GYn
+ * set that processed value exactly (n != 0). */
 typedef struct {
     long start, end;
     uint16_t buttons;
@@ -518,8 +518,7 @@ static void parse_input_script(void) {
     char *tok;
     s_script_count = 0;
     if (!env) return;
-    /* long soak scripts (hundreds of events) used to be cut off silently
-     * at 1 KiB / 64 events, after which the game saw no input at all */
+    /* no fixed-size buffer: soak scripts hold hundreds of events */
     buf = strdup(env);
     if (!buf) return;
     for (tok = strtok(buf, ","); tok; tok = strtok(NULL, ",")) {

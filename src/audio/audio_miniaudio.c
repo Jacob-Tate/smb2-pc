@@ -1,10 +1,10 @@
-/* Miniaudio Audio Backend for MusyX Compatibility
+/* miniaudio backend.
  *
- * SMB2_LINK_GAME build: this file is the "DSP" side of the audio path (see
- * include/audio_dsp.h).  The game thread's MusyX emulation queues commands;
- * a worker thread renders them tick by tick into a FIFO that the miniaudio
- * device callback drains, and optionally into a WAV file (--audio-wav).
- * Without SMB2_LINK_GAME the original scaffold placeholder below is used. */
+ * SMB2_LINK_GAME build: the "DSP" side of the audio path (include/audio_dsp.h,
+ * docs/audio.md).  A worker thread renders the queued commands tick by tick
+ * into a FIFO that the miniaudio device callback drains, and optionally into
+ * a WAV file (--audio-wav).  Without SMB2_LINK_GAME a standalone placeholder
+ * backend (no game linked) is built instead. */
 #ifdef SMB2_LINK_GAME
 
 #include "audio.h"
@@ -799,7 +799,7 @@ const AudioDeviceInfo *audio_get_device_info(int index)
 
 bool audio_set_output_device(int id) { return id == 0 && s_devOk; }
 
-#else /* !SMB2_LINK_GAME: original scaffold placeholder */
+#else /* !SMB2_LINK_GAME: placeholder backend */
 #include "audio.h"
 #define MA_IMPLEMENTATION
 #include <miniaudio.h>
@@ -908,8 +908,7 @@ void audio_shutdown(void) {
 }
 
 void audio_update(void) {
-    /* Miniaudio handles mixing automatically, but we could update 3D positions here */
-    /* For now, just ensure engine is running */
+    /* nothing to do: miniaudio's engine mixes on its own thread */
     if (!g_audio.initialized) return;
 }
 
@@ -937,8 +936,7 @@ static void free_sound_handle(SoundHandle* handle) {
 
 /* MusyX compatibility functions */
 int32_t sndPushGroup(void* projData, int32_t groupId, void* sampData, void* sdirData, void* poolData) {
-    /* In original MusyX, this loads a sound group from project data */
-    /* For PC port, we simulate by marking group as loaded */
+    /* placeholder: only marks the group as loaded */
     if (groupId >= 0 && groupId < MAX_SOUND_GROUPS) {
         g_sound_groups_loaded[groupId] = true;
         printf("Sound group %d loaded (simulated)\n", groupId);
@@ -965,8 +963,7 @@ uint32_t sndFXStartParaInfo(uint16_t fxId, int32_t volume, int32_t pan, int32_t 
     /* Convert pan (-64 to 63) to -1.0 to 1.0 */
     handle->pan = (float)pan / 64.0f;
 
-    /* For now, play a placeholder sound or generate tone */
-    /* In real implementation, this would load actual sound data based on fxId */
+    /* placeholder: plays sounds/fx_<fxId>.wav if it exists */
     char path[256];
     snprintf(path, sizeof(path), "sounds/fx_%04d.wav", fxId);
 
@@ -977,7 +974,7 @@ uint32_t sndFXStartParaInfo(uint16_t fxId, int32_t volume, int32_t pan, int32_t 
         printf("Playing sound fxId=%d, voiceId=%u\n", fxId, handle->voice_id);
         return handle->voice_id;
     } else {
-        /* Generate a simple tone as fallback */
+        /* no file: no sound */
         printf("Sound file not found: %s (generating tone)\n", path);
         free_sound_handle(handle);
         return 0;
@@ -1020,8 +1017,8 @@ void sndFXSetCtrl(uint32_t voiceId, uint16_t ctrl, int32_t value) {
 }
 
 /* High-level sound API matching original game.
- * When the real decomp is linked (SMB2_LINK_GAME), the game's own sound.c
- * provides these; the scaffold placeholders must not collide. */
+ * When the decomp is linked (SMB2_LINK_GAME), the game's own sound.c
+ * provides these; the placeholders must not collide. */
 #ifndef SMB2_LINK_GAME
 void SoundGroupLoad(int groupId) {
     sndPushGroup(NULL, groupId, NULL, NULL, NULL);

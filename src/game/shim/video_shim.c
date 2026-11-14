@@ -1,9 +1,8 @@
 /* VI / render-mode shim, plus the per-frame hook the game's render.c calls.
  *
- * video_finish_frame() is the DOL function the main loop calls at the end of
- * every frame (it would do VIWaitForRetrace + XFB flip on GC).  Here it pumps
- * SDL events, refreshes the GC pad globals, swaps the GL backbuffer and paces
- * the loop to ~59.94Hz. */
+ * video_finish_frame() stands in for the GC's VIWaitForRetrace + XFB flip at
+ * the end of every frame: it pumps SDL events, refreshes the GC pad globals,
+ * presents the frame and paces the loop to 60 Hz. */
 #include "shim.h"
 #include "gx.h"
 #include <stdio.h>
@@ -315,9 +314,8 @@ void video_finish_frame(void)
                 if (stagedef) {
                     u8 *sd = (u8 *)stagedef;
                     s32 gc = *(s32 *)(sd + 0x18);
-                    /* goals is a 32-bit GC-layout pointer (StageDef DPTR);
-                     * reading it as a native pointer on x64 took bumperCount
-                     * (0x20) as the high half and crashed on bumper stages */
+                    /* goals is a 32-bit GC-layout pointer (StageDef DPTR):
+                     * read 4 bytes, not a native pointer, on x64 */
                     struct TelemGoal *g = (struct TelemGoal *)(uintptr_t)*(u32 *)(sd + 0x1C);
                     if (gc > 0 && g)
                         printf("[goal] n=%d pos %.2f %.2f %.2f\n", (int)gc, g->px, g->py, g->pz);
@@ -372,10 +370,8 @@ void video_finish_frame(void)
             platform_swap_buffers();
     }
 
-    /* pace to 60Hz (16.667ms average, same as the old 16/17/17ms pattern) on
-     * the nanosecond clock.  SDL_Delay(ms) overshoots by up to a scheduler
-     * tick (15.6ms when Windows ignores timeBeginPeriod), which showed up as
-     * ~30ms frames followed by short catch-up frames. */
+    /* Pace to 60 Hz on the nanosecond clock: SDL_Delay(ms) can overshoot by
+     * a whole scheduler tick (15.6 ms when Windows ignores timeBeginPeriod). */
     {
         extern unsigned long long platform_get_time_ns(void);
         extern void platform_wait_until_ns(unsigned long long target_ns);

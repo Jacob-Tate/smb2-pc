@@ -1,4 +1,5 @@
-/* Asset Manager Implementation */
+/* Generic asset manager for the assets/ folder (include/assets.h).  Disc
+ * files go through dvd_shim.c. */
 #include "assets.h"
 #include <SDL2/SDL.h>
 #include <stdlib.h>
@@ -153,7 +154,7 @@ Asset* asset_load(AssetManager* mgr, const char* path, AssetType type) {
 }
 
 bool asset_load_async(AssetManager* mgr, const char* path, AssetType type, AssetLoadCallback cb, void* user_data) {
-    /* Synchronous fallback for now */
+    /* loads synchronously */
     Asset* asset = asset_load(mgr, path, type);
     if (cb) cb(asset, user_data);
     return asset != NULL;
@@ -201,21 +202,21 @@ void asset_release(Asset* asset) {
 bool asset_get_texture_info(Asset* asset, TextureInfo* out_info) {
     if (!asset || !out_info || asset->type != ASSET_TYPE_TEXTURE) return false;
     memset(out_info, 0, sizeof(TextureInfo));
-    /* Would parse texture header here */
+    /* header not parsed */
     return true;
 }
 
 bool asset_get_model_info(Asset* asset, ModelInfo* out_info) {
     if (!asset || !out_info || asset->type != ASSET_TYPE_MODEL) return false;
     memset(out_info, 0, sizeof(ModelInfo));
-    /* Would parse GMA model header here */
+    /* header not parsed */
     return true;
 }
 
 bool asset_get_sound_info(Asset* asset, SoundInfo* out_info) {
     if (!asset || !out_info || asset->type != ASSET_TYPE_SOUND) return false;
     memset(out_info, 0, sizeof(SoundInfo));
-    /* Would parse sound header here */
+    /* header not parsed */
     return true;
 }
 
@@ -298,7 +299,6 @@ char* fs_get_pref_path(const char* org, const char* app) {
 
 /* Archive handling (placeholder for GameCube disc images) */
 Archive* archive_open(const char* path) {
-    /* Would implement ISO/GCM/RVZ parsing here */
     printf("Archive open requested: %s (not implemented)\n", path);
     Archive* arc = calloc(1, sizeof(Archive));
     arc->path = strdup(path);
@@ -312,7 +312,7 @@ void archive_close(Archive* arc) {
 }
 
 bool archive_extract(Archive* arc, const char* file_path, void** out_data, size_t* out_size) {
-    /* Would extract file from archive */
+    /* not implemented */
     (void)arc; (void)file_path; (void)out_data; (void)out_size;
     return false;
 }

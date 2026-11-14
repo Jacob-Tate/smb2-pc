@@ -12,8 +12,7 @@
  *     PADRead result (g_read_inputs_and_maybe_reset_console, 0x80009A10 and
  *     fn_8000A380): each stick is mapped from a per-pad gate octagon onto a
  *     square (+-105) and through a 100-entry response curve whose top is 60,
- *     the value world.c divides by.  The PC port used to skip this and hand
- *     the game linear SDL values. */
+ *     the value world.c divides by. */
 #ifndef GC_STICK_H
 #define GC_STICK_H
 

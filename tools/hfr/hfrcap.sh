@@ -1,5 +1,5 @@
 #!/bin/bash
-# HFR evidence capture (docs/hfr.md section "Testing").
+# HFR in-between frame capture (docs/hfr.md, "Testing tools").
 #
 #   hfrcap.sh <label> <bindir> <mode> <ranges> [-- extra exe args]
 #

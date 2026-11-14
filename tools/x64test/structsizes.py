@@ -9,7 +9,7 @@ i686-w64-mingw32-gcc and once with the x64 clang (+ pc_ptr32.h), then prints
 the structs whose sizes differ: "name size32 size64 header".  A struct that
 lives in a disc/file image, a static table, a literal-size alloc/memset or an
 overlay must have the SAME size (add DPTR / fix the code).  See
-docs/x64_work_packages.md.
+docs/x64.md, Structs whose size differs on x64.
 """
 import os, re, subprocess, sys, tempfile, glob
 

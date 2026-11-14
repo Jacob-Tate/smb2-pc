@@ -1,11 +1,9 @@
-/* PC port stand-in for mkb2.sel_ngc.rel (the NGC mode-select menu).
- *
- * The real sel_ngc REL is not decompiled yet, so dvd_shim.c dispatches
- * "mkb2.sel_ngc.rel" here.  This is a plain debug-text menu that starts the
- * same game flows sel_ngc would: Challenge Mode (Beginner/Advanced/Expert),
- * Practice (the decompiled sel_stage stage picker) and the minigames that
- * are linked into this build.  Games return here through
- * g_return_to_sel_ngc() -> SMD_SEL_NGC_REINIT, which reloads this "REL". */
+/* Debug launcher: a stand-in for mkb2.sel_ngc.rel (the NGC mode-select
+ * menu), used when SMB2_PC_LAUNCHER=1 (dvd_shim.c).  A plain debug-text menu
+ * that starts the same game flows sel_ngc would: Challenge Mode
+ * (Beginner/Advanced/Expert), Practice (the decompiled sel_stage picker) and
+ * the minigames.  Games return here through g_return_to_sel_ngc() ->
+ * SMD_SEL_NGC_REINIT, which reloads this "REL". */
 #include <stdlib.h>
 #include <string.h>
 #include "types.h"
@@ -81,12 +79,10 @@ static void launcher_set_single_player(void)
     g_poolInfo.playerPool.statusList[1] = 0;
     g_poolInfo.playerPool.statusList[2] = 0;
     g_poolInfo.playerPool.statusList[3] = 0;
-    /* the camera pool keeps the statuses the attract demo left (it plays
-     * with several cameras); the real sel_ngc leaves only player 0's
-     * camera, and game init enables the cameras of active players.  Stale
-     * cameras 1-3 made game_main_draw_func draw the whole scene four times
-     * per frame (full viewports in Challenge), e.g. the lava world's
-     * additive screen glow four times over. */
+    /* the attract demo leaves several cameras enabled.  Like the real
+     * sel_ngc, keep only player 0's (game init enables those of the active
+     * players), or game_main_draw_func draws the scene once per stale
+     * camera. */
     disable_all_cameras();
     active_monkey_id = 0;
 }
@@ -143,21 +139,15 @@ static void launcher_start(const struct LauncherEntry *e)
         sub_mode_request = 0x3C;   /* SMD_GAME_FIRST_INIT */
         break;
     case L_PRACTICE:
-        /* hand the menu over to the decompiled sel_stage module the way
-         * the original enters it: SMD_SEL_STAGE_INIT runs smd_sel_ngc_init
-         * (sel.c), which switches to game heap config 0x11 (stage heap
-         * 0x520020, bg heap 0x480020: room for any stage + background,
-         * since the picker walks all of them) and loads
-         * mkb2.sel_stage.rel into the sel_ngc REL slot.  Calling
-         * selStagePrologue directly kept this menu's config 0xB (bg heap
-         * 0x210020), which bg_lav2 (tpl 578528 + gma 1685888 bytes) does
-         * not fit: "heap 2 out of memory" at the 6th preview (stage 7).
-         * smd_sel_ngc_init itself can't be requested from here (sub_mode
-         * changes inside main mode 1 keep the sel destination installed,
-         * and its set_sub_mode_destination would panic), so do its body:
-         * unload this "REL" first, as g_sel_ngc_sub_mode_destination
-         * does, so the slot then holds sel_stage and is purged with its
-         * epilog when a stage is started. */
+        /* enter the decompiled sel_stage picker the way the original does:
+         * SMD_SEL_STAGE_INIT runs smd_sel_ngc_init (sel.c), which switches to
+         * heap config 0x11 (bg heap 0x480020, room for every background the
+         * picker previews; this menu's config 0xB is too small for bg_lav2)
+         * and loads mkb2.sel_stage.rel into the sel_ngc REL slot.
+         * smd_sel_ngc_init can't be requested from main mode 1 (its
+         * set_sub_mode_destination would panic), so do its body: unload this
+         * "REL" first, as g_sel_ngc_sub_mode_destination does, so the slot
+         * holds sel_stage and is purged with its epilog when a stage starts. */
         g_purge_rel(g_some_sel_ngc_rel_buffer);
         dest_all_events();
         g_something_with_iteratively_freeing_memory();

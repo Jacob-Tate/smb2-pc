@@ -3,9 +3,7 @@
  * Implements the GX API the decompiled game and the shims call (state,
  * matrices, immediate-mode vertices, textures, TEV/channels/indirect/texgen/
  * fog, EFB copies, frame kickoff) on top of a small GPU interface (gx_gpu.h)
- * implemented by render_opengl.c and render_d3d12.c.  Everything here used to
- * live in render_opengl.c; the GL calls moved to the backend unchanged, so the
- * GL output is identical. */
+ * implemented by render_opengl.c and render_d3d12.c.  See docs/d3d12.md. */
 #include "render.h"
 #include "gx_gpu.h"
 #include "gx_hfr.h"
@@ -16,7 +14,7 @@
 #include "perf.h"
 #include "pc_settings.h"
 
-/* GX core state (formerly the GL backend struct) */
+/* GX core state */
 typedef struct {
     int width;             /* drawable size */
     int height;
@@ -147,14 +145,13 @@ static void core_resize(GxCore* gl, int width, int height) {
  * actual window.  Flip Y in GC space first, then scale. */
 #define GC_FB_W 640.0f
 /* EFB height the game renders into: NTSC overscan adjust makes it 448, not
- * 480 (render.c set_render_mode -> GXSetDispCopySrc).  The console's VI shows
- * those lines in the 4:3 picture, so map the whole EFB height to the output
- * box; scaling by 480 left an uncovered strip at the bottom showing the clear
- * colour (white on jungle stages, black elsewhere). */
+ * 480 (render.c set_render_mode -> GXSetDispCopySrc).  The VI shows all of
+ * those lines in the 4:3 picture, so the whole EFB height maps to the
+ * output box. */
 static float s_gc_fb_h = 480.0f;
 #define GC_FB_H s_gc_fb_h
 
-/* PC port: the 640x480 EFB maps to this window-pixel rectangle (the whole
+/* The 640x480 EFB maps to this window-pixel rectangle (the whole
  * window, or a centred 4:3 / 16:9 box for the "Aspect ratio" setting).
  * Updated at frame start and on resize; everything that maps EFB to window
  * coordinates goes through OUT_SX/OUT_SY and the offsets. */
@@ -185,13 +182,9 @@ void pc_out_rect_update(void) {
 #define OUT_SY (s_out_h / GC_FB_H)
 
 /* Map a GC EFB rectangle (top-left origin) to GL window pixels (bottom-left
- * origin) by rounding each *edge*, never origin and size separately.  With a
- * non-integer EFB scale (448-line EFB -> 720 px is 1.607 px per line) the
- * per-component truncation that viewport/scissor used and the rounding the
- * copy-clear used disagreed by a row: bowling's 256-line offscreen pass then
- * left one row of its colour and depth under the copy-clear, showing as a
- * teal line across the background.  Edge rounding makes adjacent rects tile
- * exactly and every user of a rect agree. */
+ * origin) by rounding each edge, never origin and size separately: with a
+ * non-integer EFB scale (448 lines -> 720 px) adjacent rects then tile
+ * exactly and viewport, scissor and copy-clear agree on every row. */
 static void pc_efb_rect_to_gl(float x, float y, float w, float h,
                               int* gx, int* gy, int* gw, int* gh) {
     float sx = OUT_SX, sy = OUT_SY;
@@ -782,7 +775,7 @@ static void gx_flush_batch_impl(GxCore* gl) {
                 gl->bound_textures[0], gl->current_blend_mode,
                 gl->current_z_compare, gl->current_z_func, gl->current_z_update,
                 gl->projection_type, gl->current_cull_mode);
-        { /* TEMP nl: texcoord gen 0 matrix */
+        { /* texcoord gen 0 matrix */
             int tid = gl->current_tex_coord_gen[0];
             if (tid >= 30 && tid < 60) {
                 const float (*tm)[4] = gl->texture_matrices[(tid - 30) / 3];
@@ -838,19 +831,13 @@ static void gx_flush_batch_impl(GxCore* gl) {
         d.nverts = gl->vertex_count;
         if (d.prim == GXD_QUADS) {
             int quads = gl->vertex_count / 4;
-            /* 2D quad UV clamp.  The 2D paths (sprite/textdraw/bitmap) draw
-             * glyphs and sprites as quads whose UV rect is a cell of a shared
-             * atlas, placed on whole EFB pixels at 1:1 texel scale.  On the GC
-             * the outermost pixel centres then sample exactly the edge texel
-             * centres of the cell, so bilinear filtering never reads the
-             * neighbouring cell.  Rendered at a higher resolution the outermost
-             * window pixels sample up to half an EFB pixel closer to the edge
-             * and blend in the neighbour's border column/row (e.g. a dark seam
-             * at the right of the HUD stage-number "1" from the "2" next to it
-             * in the digit atlas).  The fragment shader clamps texcoord 0 to the
-             * quad's UV rect inset by half an EFB pixel's UV footprint, which
-             * is the range the GC's own sample points cover, and leaves the
-             * interior untouched.  Ortho (2D) draws only. */
+            /* 2D quad UV clamp.  Sprites and glyphs are quads whose UV rect
+             * is a cell of a shared atlas, drawn 1:1 on whole EFB pixels, so
+             * on GC bilinear filtering never reaches the neighbouring cell.
+             * At a higher resolution the outer window pixels sample up to
+             * half an EFB pixel closer to the edge, so the fragment shader
+             * clamps texcoord 0 to the quad's UV rect inset by half an EFB
+             * pixel.  Ortho (2D) draws only. */
             int uvclamp = gl->projection_type == 1 && gl->batch_has_texcoord &&
                           gl->rect_buffer && quads > 0;
             if (uvclamp) {
@@ -980,9 +967,6 @@ static void core_set_alpha_compare(GxCore* gl, int comp0, uint8_t ref0, int op, 
     gl->current_alpha_op = op;
     gl->current_alpha_comp1 = comp1;
     gl->current_alpha_ref1 = ref1;
-
-    /* Alpha test is not in core profile, would need shader-based implementation */
-    /* For now, just store the state */
 }
 
 static void core_set_cull_mode(GxCore* gl, int mode) {
@@ -1083,9 +1067,9 @@ void render_end_frame(void) {
     if (g_core) gx_flush_batch(g_core);
 }
 
-/* Note: like the GL path always did, a batch still pending at present time
- * (GXEnd is a no-op, so the frame's last batch waits for the next state
- * change) is not flushed here; see docs/d3d12.md. */
+/* A batch still pending at present time (GXEnd is a no-op, so the frame's
+ * last batch waits for the next state change) is not flushed here; see
+ * docs/d3d12.md, Known differences. */
 void render_present(void) {
     if (g_core) {
         if (hfr_active()) {
@@ -1124,7 +1108,7 @@ void GXInit(void) {
 /* ---- frame kickoff (DOL asm gx_start_new_frame, 0x80064970) ----
  * GC: FIFO bookkeeping, then GXCopyDisp(xfb, clear=1) copies the EFB out and
  * clears it with the GXSetCopyClear color, then resets z/alpha-compare modes
- * (asm g_gx_reset_z_and_alpha_compare_modes, 0x80064B84).  PC: a glClear. */
+ * (asm g_gx_reset_z_and_alpha_compare_modes, 0x80064B84).  PC: a backend clear. */
 typedef struct { uint8_t r, g, b, a; } ShimGXColor;
 static uint32_t s_copy_clear_rgba = 0x000000FF;
 static float s_copy_clear_z = 1.0f;
@@ -1215,13 +1199,13 @@ void GXSetScissor(uint32_t left, uint32_t top, uint32_t width, uint32_t height) 
 }
 
 /* Game-side cached wrapper (gx.h): the GC version skips redundant writes;
- * here every call is forwarded so GL state always matches. */
+ * here every call is forwarded so the backend state always matches. */
 void GXSetScissor_cached(uint32_t left, uint32_t top, uint32_t width, uint32_t height) {
     GXSetScissor(left, top, width, height);
 }
 
 /* PC settings: a window resize between frames (settings overlay) must not
- * leave the GL viewport/scissor at the old size's mapping. */
+ * leave the backend viewport/scissor at the old size's mapping. */
 static void pc_reapply_gx_view(void) {
     if (!g_core) return;
     core_set_viewport(g_core, s_vp_gc[0], s_vp_gc[1],
@@ -1292,10 +1276,7 @@ void GXSetZMode_cached(uint8_t compareEnable, int func, uint8_t updateEnable) {
     GXSetZMode(compareEnable, func, updateEnable);
 }
 /* gxcache.c: report the current Z mode so callers can restore it (sprite.c
- * draw_sprite_draw_request with flag bit 21, nl2ngc.c).  This was an empty
- * stub, so callers restored uninitialised stack bytes: the result differed
- * between builds (32-bit: compare on/LEQUAL, x64: compare off), e.g. the
- * Monkey Race minimap markers stacked in a different order on x64. */
+ * draw_sprite_draw_request with flag bit 21, nl2ngc.c). */
 void g_read_something_from_prev_GX_settings(uint8_t *compareEnable, int *func, uint8_t *updateEnable) {
     *compareEnable = g_core ? g_core->current_z_compare : 1;
     *func = g_core ? g_core->current_z_func : GX_LEQUAL;
@@ -1339,9 +1320,8 @@ void GXSetTevAlphaOp(int stage, int tevOp, int bias, int scale, int clamp, int o
 
 /* GXSetTevColor: the 2D code sets GX_TEVREG0 (id 1, multiply color) and
  * GX_TEVREG1 (id 2, add color) before each sprite/glyph draw; stage 0 is
- * configured as out = TEXC*C0 + C1 (see GxCore.ui_tev).  White text on
- * the white textbox textures is produced by C0 alone, so ignoring these
- * made all textbox/banner text invisible. */
+ * configured as out = TEXC*C0 + C1 (see GxCore.ui_tev).  Textbox and
+ * banner text gets its colour from C0 alone (the textures are white). */
 void GXSetTevColor(int id, GXColor color) {
     float v[4];
     float* dst;
@@ -1418,40 +1398,19 @@ void GXLoadPosMtxImm(const Mtx mtx, int id) {
 }
 
 void GXLoadNrmMtxImm(const Mtx mtx, int id) {
-    /* GXFX: normal matrices are their own XF slots; they used to overwrite
-     * the position matrix of the same id */
+    /* GXFX: normal matrices are their own XF slots, separate from the
+     * position matrix of the same id */
     gxfx_load_nrm(mtx, id);
 }
 
 /* ---- Texture lifetime ----
- *
- * The game re-inits GXTexObjs constantly (sprites every frame), which on PC
- * would decode + upload a fresh texture each call, so backend textures are
- * cached in records keyed by identity (image ptr, dims, fmt, wraps, mip) and
- * validated by a content key (texcache_key: samples of the texel bytes, so
- * memory reused at the same address isn't mistaken for the old texture).
- *
- * On GC there is no texture object to free: a GXTexObj only points at texel
- * memory, which the GPU reads when it draws.  So a record is retired when its
- * texels can no longer be what that memory holds:
- *  - superseded: the same identity was re-inited with different content
- *    (memory rewritten in place, e.g. glyph pages, reused heap blocks);
- *  - freed: the memory was freed (OSFreeToHeap) or a heap was created over
- *    it (OSCreateHeap: game heaps re-made on a mode change; not OSDestroyHeap,
- *    alloc.c keeps the blocks of a destroyed main heap): os_shim.c reports
- *    the range through pc_tex_mem_freed_hook;
- *  - evicted: not bound for TEX_EVICT_AGE frames while the alive textures
- *    exceed the budget (memory changed without a free, e.g. buffers the game
- *    sub-allocates itself, or PC-side memory).
- * A GXTexObj holds the record id + generation, not a pointer: binding one
- * whose record was retired (gen mismatch) re-inits it from its image pointer
- * and fields, exactly like the GC reading the memory at draw time; the LOD
- * settings of the retired record are carried over.  Retired textures are
- * destroyed at the next frame start (after the frame that may have used them
- * was submitted; the backends keep the resource alive for the frames still
- * in flight, and the HFR proxy for its recorded streams), and not while
- * still bound in the core.  EFB-copy textures (s_tc, below) are owned by the
- * copy registry and use ids TC_ID_BASE + slot. */
+ * Backend textures are cached in records keyed by identity (image ptr, dims,
+ * fmt, wraps, mip) and checked against a content key.  A record is retired
+ * when its memory is rewritten, freed (pc_tex_mem_freed_hook) or, over the
+ * budget, left unbound; a GXTexObj holds record id + generation, so binding a
+ * stale one re-inits it from its image pointer, as the GC reads memory at
+ * draw time.  EFB-copy textures (s_tc) use ids TC_ID_BASE + slot.
+ * See docs/d3d12.md, Texture lifetime. */
 #define TC_ID_BASE 0xFFFF0000u
 _Static_assert(sizeof(GXTexObj) <= 32, "GXTexObj lives in the game's 32-byte GXTexObj");
 #define TEX_HASH_SIZE 8192u
@@ -1794,7 +1753,7 @@ static void tex_frame(GxCore* gl) {
 }
 
 /* GXInitTexObjLOD: GX filters / LOD clamp / bias / anisotropy applied to the
- * GL texture behind the object.  GX filter enum: 0 NEAR, 1 LINEAR,
+ * backend texture behind the object.  GX filter enum: 0 NEAR, 1 LINEAR,
  * 2 NEAR_MIP_NEAR, 3 LIN_MIP_NEAR, 4 NEAR_MIP_LIN, 5 LIN_MIP_LIN.
  * maxAniso: 0 = 1x, 1 = 2x, 2 = 4x. */
 void GXInitTexObjLOD(GXTexObj* obj, int minFilt, int magFilt, float minLod, float maxLod,
@@ -2074,11 +2033,10 @@ void MTXMultVecSR(const Mtx m, const Vec* src, Vec* dst) {
  * ----------------------------------------------------------------------
  * Covers GXSetChanCtrl/MatColor/AmbColor, GX light objects, the normal
  * matrix, and a generic N-stage TEV (GXSetTevOrder/ColorIn/AlphaIn/ColorOp/
- * AlphaOp/KColor/Op) plus the alpha compare.  The decomp's 3D helpers that
- * configure GX directly (nl2ngc.c NL models: items/bananas/effects/stage
- * intro objects, polydisp, bg_*, ...) need this: without it they were drawn
- * as vertexcolor * (whatever texture sat on unit 0), but NL binds its
- * textures to maps 7,6,... and relies on lighting with register colors.
+ * AlphaOp/KColor/Op) plus the alpha compare, for the decomp code that
+ * configures GX directly (nl2ngc.c NL models: items/bananas/effects/stage
+ * intro objects, polydisp, bg_*, ...).  NL binds its textures to maps
+ * 7,6,... and relies on lighting with register colors.
  *
  * Mode selection (shader):  ui_tev (sprite/text path, GXSetTevColor) wins,
  * then "gx mode" (set by any channel/TEV setter below), else the legacy
@@ -2192,8 +2150,8 @@ static void gxfx_defaults(void) {
      * avdisp init 0x800694F4, which the port replaces) sets
      * SWAP0 = RGBA, SWAP1 = RGBR, SWAP2 = RGBG, SWAP3 = RGBB, i.e. table
      * n > 0 takes alpha from channel n - 1 (not GXInit's RRRA/GGGA/BBBA).
-     * E.g. the story-scene smoke (STORM_SMOKE, scnplay_effect.c) is an
-     * opaque grey CMPR puff drawn with SWAP1: its red channel is the alpha. */
+     * The story-scene smoke (STORM_SMOKE, scnplay_effect.c) relies on it:
+     * an opaque CMPR puff drawn with SWAP1, red = alpha. */
     for (i = 0; i < 4; i++) {
         s_gx.swaptab[i][0] = 0; s_gx.swaptab[i][1] = 1; s_gx.swaptab[i][2] = 2;
         s_gx.swaptab[i][3] = i == 0 ? 3 : i - 1;
@@ -2249,19 +2207,16 @@ static void gxfx_konst(int s, float out[4]) {
 }
 
 /* Whether a flushed batch takes the UI TEV shortcut (TEXC*C0 + C1).  The
- * shortcut models the 2D code's textured stage; a batch without texture
- * coordinates would fall back to the bare vertex colour there, ignoring the
- * TEV the game configured.  So an untextured batch drawn after the game set
- * up the TEV through the setters (s_gx.mode) runs the generic TEV instead.
- * E.g. the story-cutscene speech-bubble tail (dialog.c fn_1_162260: 1 stage,
- * no texture, colour = C0, alpha = A0 = 0x80, blended) was opaque white. */
+ * shortcut models the 2D code's textured stage, so an untextured batch drawn
+ * after the game set up the TEV through the setters (s_gx.mode) runs the
+ * generic TEV instead (e.g. the speech-bubble tail, dialog.c fn_1_162260:
+ * no texture, colour = C0, alpha = A0). */
 static int gx_ui_tev_eff(const GxCore* gl) {
     int textured = gl->batch_has_texcoord && gl->bound_textures[0] != NULL;
     return gl->ui_tev && (textured || !s_gx.mode);
 }
 
-/* called at every batch flush: fill the GXFX parts of the shader constants
- * (same values the GL path used to upload uniform by uniform) */
+/* called at every batch flush: fill the GXFX parts of the shader constants */
 static void gxfx_build(GxCore* gl) {
     int eff = s_gx.mode && !s_ui_eff;
     int i, valid = 0;
@@ -2324,7 +2279,7 @@ static void gxfx_build(GxCore* gl) {
     gxind_build(n_tev_clamped());
 }
 
-/* TEMP debug: one-line summary of the GX state for --trace-frame */
+/* --trace-frame: one-line summary of the GX state */
 static void gxfx_trace(void) {
     if (g_mtx_trace <= 0 || !s_gx.mode || !g_core || s_ui_eff) return;
     fprintf(stderr, "[trace]  gxfx n=%d ord0=%d,%d,%d cin0=%d,%d,%d,%d ain0=%d,%d,%d,%d "
@@ -2965,11 +2920,11 @@ uint32_t GXGetTexBufferSize(uint16_t width, uint16_t height, uint32_t format,
 /* ---- EFB copies ----
  * GC GXCopyTex converts an EFB rectangle into texel data in main memory
  * (box-filtered 2x when the dst mipmap flag is set) and optionally clears
- * that rectangle.  Here: glReadPixels the scaled rectangle, area-resample
- * to the dst size, encode into the real GC texel layout at dest (so CPU
- * readers and the regular decoder agree), and keep a dedicated GL texture
- * per dest address that GXInitTexObj hands out while the memory still
- * holds exactly what the copy wrote (checked by hash). */
+ * that rectangle.  Here the rectangle is area-resampled to the dst size and
+ * encoded into the real GC texel layout at dest (so CPU readers and the
+ * regular decoder agree); GXInitTexObj hands out a dedicated backend texture
+ * per dest address while the memory still holds exactly what the copy wrote
+ * (checked by hash).  See docs/d3d12.md, EFB copies. */
 static uint16_t s_cp_l, s_cp_t, s_cp_w = 640, s_cp_h = 480;
 static uint16_t s_cp_dw = 640, s_cp_dh = 480;
 static uint32_t s_cp_fmt = 4;
@@ -3074,7 +3029,7 @@ use:
 
 /* GXLoadTexObj: a texObj initialised before the EFB copy that targets its
  * memory (e.g. background shadow groups set up at stage load) still carries
- * the GL texture decoded from the old bytes; on GC it reads memory at load
+ * the texture decoded from the old bytes; on GC it reads memory at load
  * time, so swap in the copy's texture. */
 static void texcopy_fix_obj(GXTexObj* obj) {
     int e;
@@ -3170,7 +3125,7 @@ static void tex_encode(uint8_t* dst, const uint8_t* img, int w, int h, int cf) {
 /* SMB2_COPY_CPU_RESAMPLE (A/B checks of the GPU copy paths):
  *   0 (default) async GPU copy (copy_tex) where the format allows, else the
  *     synchronous GPU resample (read_pixels_box), else the CPU path;
- *   1 = old path only (full-size readback + CPU resample);
+ *   1 = CPU path only (full-size readback + CPU resample);
  *   2 = verify: async copy completed at once, and the synchronous paths,
  *       compared with the CPU path ([copyverify] lines);
  *   3 = synchronous GPU resample, no async copies. */
@@ -3434,7 +3389,7 @@ encode:
     s_tc[e].h = (uint16_t)dh;
     s_tc[e].copy_fmt = cf;
     s_tc[e].stamp = ++s_tc_stamp;
-    {   /* refresh the GL texture in place: texObjs initialised once keep
+    {   /* refresh the texture in place: texObjs initialised once keep
          * seeing the latest copy, as GC texture memory would */
         int fmt = s_tc[e].up_fmt >= 0 && s_tc[e].up_w == dw && s_tc[e].up_h == dh
                 ? s_tc[e].up_fmt : tex_copy_sample_fmt(cf);
@@ -3442,7 +3397,7 @@ encode:
         tc_upload(e, fmt, dw, dh, 0, 0);
         hfr_note_sync_copy(s_tc[e].tex, x0, y0, W, H, dw, dh, cf, 0);
     }
-    if (g_mtx_trace > 0) /* TEMP */
+    if (g_mtx_trace > 0)
         fprintf(stderr, "[trace] copytex src %u,%u %ux%u -> %dx%d fmt=0x%x clear=%d dest=%p tex=%p\n",
                 s_cp_l, s_cp_t, s_cp_w, s_cp_h, dw, dh, cf, clear, dest, s_tc[e].tex);
 

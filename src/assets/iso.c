@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <ctype.h>
 #include <unistd.h>
-/* #include <zlib.h>  // For RVZ decompression - not implemented */
 
 struct ISOArchive {
     FILE* file;
@@ -47,7 +46,7 @@ static uint32_t read_be24(const void* ptr) {
     return (b[0] << 16) | (b[1] << 8) | b[2];
 }
 
-/* RVZ (compressed Wii/GC) support - simplified */
+/* RVZ (compressed Wii/GC image): detected only, so iso_open can reject it */
 static bool iso_read_rvz_header(FILE* f, ISOArchive* arc) {
     /* RVZ format: magic "RVZ\0", version, then compressed blocks */
     uint8_t magic[4];
@@ -58,7 +57,6 @@ static bool iso_read_rvz_header(FILE* f, ISOArchive* arc) {
     }
     arc->is_rvz = true;
     arc->is_wii = true;  /* RVZ is typically Wii */
-    /* For now, just note it's RVZ - full decompression is complex */
     return true;
 }
 
@@ -346,8 +344,7 @@ bool iso_extract_file(ISOArchive* arc, int index, void** out_data, size_t* out_s
     uint32_t file_offset = entry->offset;
     uint32_t file_size = entry->size;
 
-    /* GameCube offsets are in 4-byte sectors for some formats */
-    /* For raw ISO, offset is absolute */
+    /* GC disc FST offsets are absolute byte offsets */
     fseek(arc->file, file_offset, SEEK_SET);
 
     void* data = malloc(file_size);
@@ -452,7 +449,7 @@ bool iso_get_game_info(ISOArchive* arc, ISOGameInfo* out_info) {
     return true;
 }
 
-/* Widescreen patching - modifies DOL executable in place */
+/* Widescreen DOL patch: unused placeholder, only logs */
 void iso_apply_widescreen_patch(ISOArchive* arc, const WidescreenConfig* config) {
     if (!arc || !config || !config->enabled) return;
 
@@ -475,18 +472,13 @@ void iso_apply_widescreen_patch(ISOArchive* arc, const WidescreenConfig* config)
         return;
     }
 
-    /*
-     * Widescreen patch for SMB2:
-     * Find C_MTXPerspective calls and modify aspect ratio
-     * This is a simplified version - real patching requires DOL parsing
-     */
     printf("Widescreen patch would be applied to main.dol (aspect: %.2f)\n", config->aspect_ratio);
     printf("  This requires DOL relocation parsing - implement for production\n");
 
     free(dol_data);
 }
 
-/* Asset Cache Implementation */
+/* Asset cache: offline conversion helpers, not used by the game */
 struct AssetCache {
     char* cache_dir;
     char* texture_dir;
@@ -587,7 +579,7 @@ bool asset_cache_convert_texture(AssetCache* cache, const ISOFileEntry* entry, c
             default: tex_size = width * height * 4; break;
         }
 
-        /* Write raw texture data for now - would use libktx or stb_image_write */
+        /* raw texel data behind a small header (w, h, format) */
         char out_path[512];
         snprintf(out_path, sizeof(out_path), "%s/%s_%d.ktx", cache->texture_dir, entry->name, i);
 
@@ -607,11 +599,10 @@ bool asset_cache_convert_texture(AssetCache* cache, const ISOFileEntry* entry, c
     return true;
 }
 
-/* GMA (GameCube Model) - simplified */
+/* GMA (GameCube model): stored as is */
 bool asset_cache_convert_model(AssetCache* cache, const ISOFileEntry* entry, const void* data, size_t size) {
     if (!cache || !entry) return false;
 
-    /* GMA format parsing is complex - write raw for now */
     char out_path[512];
     snprintf(out_path, sizeof(out_path), "%s/%s.gma", cache->model_dir, entry->name);
 
@@ -624,7 +615,7 @@ bool asset_cache_convert_model(AssetCache* cache, const ISOFileEntry* entry, con
     return true;
 }
 
-/* ADX (Audio) - simplified */
+/* ADX (audio): stored as is */
 bool asset_cache_convert_audio(AssetCache* cache, const ISOFileEntry* entry, const void* data, size_t size) {
     if (!cache || !entry) return false;
 

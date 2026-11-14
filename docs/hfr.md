@@ -8,8 +8,8 @@ and effects by exactly one step.  HFR keeps the 60 Hz tick untouched and
 draws extra frames *between* ticks by replaying what the last two ticks
 drew, with transforms, vertices, lights and colours blended.
 
-Status: complete feature (pc_port + decomp).  The frame
-rate setting at **60 (the default) is exactly today's code path** (section 9).
+At the frame rate setting **60 (the default) nothing is recorded or
+replayed** (section 9).
 
 ## 1. Using it
 
@@ -104,8 +104,7 @@ per pair).
   Continuous motion is interpolated; **discrete changes happen at the
   midpoint**: an object appearing or disappearing, a timer digit changing,
   a sprite frame, a camera cut, text being typed.  3D and 2D change at the
-  same moment - the HUD no longer runs one tick ahead of the scene (the
-  prototype drew 2D from the newest tick only).
+  same moment, so the HUD never runs ahead of the scene.
 * Matrices: projection lerp (same projection type), modelview / normal
   matrix element-wise below 3 deg of rotation per tick (exact for
   translation, consistent across the pieces of an object), **rotation slerp
@@ -119,7 +118,7 @@ per pair).
 * TEV: light positions / directions / colours, konst and register colours,
   material / ambient colours, post-texgen matrices lerp; draw constants: TEV
   colour registers, fog range and colour lerp.  Colour fades are smooth.
-* EFB copies (`copy_tex`, GPU-side since f7ffdc1/590b599): **re-executed in
+* EFB copies (`copy_tex`, docs/d3d12.md section 4): **re-executed in
   every replay** from the interpolated offscreen pass, texture only
   (`GXCOPY_NO_READBACK`, no readback, no CPU work; GC memory keeps the tick's
   copy, so game logic never sees in-between data).  A copy whose own
@@ -180,7 +179,7 @@ generic matching (nearest position + mesh identity) pairs them.
 
 ## 5. Input latency
 
-Input is sampled once per tick, as before, and the tick frame reaches the
+Input is sampled once per tick, as at 60 fps, and the tick frame reaches the
 screen at the same time as at 60 fps (presented at the next tick start).
 The in-between frames do not delay it: they are shown *before* it, during
 the interval in which 60 fps keeps showing the previous tick.  So:
@@ -230,174 +229,37 @@ turns, so it is not used.
 * modes.sh `hfr_roll` (Challenge 1-1 at full tilt: fast ball spin, goal
   party ball, replay) and `hfr_fall` (fall-out, respawn cut).
 
-## 8. Evidence and measurements
+## 8. Performance and latency
 
-All runs: x64 build, RTX 3080, Samsung Odyssey G8 3840x2160 @ 240 Hz, runs
-started from WSL with other builds running on the same host.  Paths are
-relative to the test workspace root (`$SMB2_X64_WS`, see tools/x64test/modes.sh).
+Measured on an RTX 3080 at 3840x2160, MSAA 4x, V-Sync on, x64 build:
 
-### In-between frames, all modes (`runs/s3` final build; `runs/s1` earlier)
+* Menus / light scenes: 240 fps locked at a 240 target (p99 interval
+  ~4.3 ms), 120 locked at 120; uncapped with V-Sync off 1300-1400 fps.
+* Light gameplay (2.7-3.2k draws per tick): D3D12 at 240 reaches 180-199 fps;
+  120 stays locked.
+* Party games (D3D12, 240): dogfight ~175, baseball ~179, boat ~97 (EFB
+  copies), story cutscenes ~120 (median).
+* Heavy scenes (goal party ball + replay, 8-10k draws): 60-64 fps; the GPU
+  cannot fit a second frame in the tick and the pacer keeps the game at 60.
+* GL replays are slower per draw and have no GPU timing, so GL reaches fewer
+  in-between frames in gameplay (boat stays at 60: its EFB copies blit the
+  whole 4K frame per copy).  **D3D12 is the recommended renderer for high
+  frame rates at 4K.**
+* The game keeps 60 ticks/s in every scene; ticks that would run late
+  degrade to the plain 60 fps path.
 
-`tools/hfr/hfrcap.sh` at 240 fps (3 in-between frames per tick, fixed
-phases), 1280x720, GL and D3D12 split over the modes; per mode
-`check_<range>.txt` (step differences per tick), `strip_<tick>.png` (tick
-T-1, in-betweens 1-3, tick T) and `pops/pop_<tick>.png` (enlarged strips of
-ticks with blocks whose change lands in one step).  Every flagged tick was
-reviewed: all are legitimate discrete changes at the midpoint (timer digits,
-score / time-bonus counters, text being typed, a cut during a fade); no
-popping, ghosting or wrong blends remain.
+Latency: the tick frame is presented at the same time as at 60 fps.  The
+first frame that shows a new tick (the first in-between frame) appears
+4.5-5.1 ms after the tick start at 240 fps and 8.4-8.8 ms at 120 fps, vs
+16.7 ms at 60 fps (`first` in the `[hfr]` line).  In heavy windows without
+in-between frames it is 16.7 ms, like 60 fps.
 
-| mode | ranges | notes |
-|---|---|---|
-| intro (attract) | 300, 500, 650 | 3D attract + sparkle particles |
-| menus | 1455-1475, 1555-1575 (slides), 1900 | menu slide-ins interpolated (2D), attract cut at the fade |
-| challenge, `hfr_roll` | 2400-3110 | full-tilt roll (ball spin slerp), goal: party ball splits coherently (fixed: tiles mismatched before mesh identity), confetti, GOAL text, replay, next stage fly-in |
-| `hfr_fall` | 2500, 2900 | fall-out, respawn (camera-reset cut) |
-| howto2 | 3700-4400 | How to play pages |
-| story | 2000-8000 | cutscene with dialogue (text typed discretely), story select |
-| race / target / bowling / boat / dogfight / baseball | 2700-3300 | all six launcher party games; boat water/reflection copies re-executed per frame; dogfight damage flash (overlay on alternate ticks) switches at the midpoint |
-| baseball intro pan | `runs/tbb3` 2280, 2330 | camera reset every tick while panning: interpolated (even steps 9.1/9.1/9.1/9.1; before the soft-cut test: 0/20.6/0/0) |
-| menus text change | `runs/t2d/menus` 1461 | message box text replaced: clean switch at the midpoint (before the 2D rule: letters flew to the old text's letters) |
-| story select | `runs/t2d/story` 8000 | bubble sprites move individually: paired (mutual nearest) and interpolated |
-| 32-bit build | `runs/gl32`, `runs/dx32` hfr_roll 2600 | same step pattern as x64 (6.6/6.9/6.9/7.1), no crashes |
-
-Statistics per mode (`[hfr]` lines, s1): EFB copies re-executed 11576 (boat),
-12672 (bowling), 5094 (story), 2149 (menus), kept (feedback / sync) 0
-everywhere; texture hazards 0; camera cuts by hook / view jump / heuristic
-e.g. story 28 / 26 / 0.
-
-Bugs found and fixed with this (all in the git history):
-the first in-between frame showed the tick frame (a present drew the
-deferred tick frame first; 943f1a5), letters of a replaced message flew
-to the old text (2D nearest pairing; now 2D pairs only when the group moved
-together or the pair is unambiguous), baseball's per-tick camera reset
-disabled interpolation, and the goal party ball is 4-vertex strip
-pieces that share their first vertex with the neighbouring strip; pairing by
-position + first vertex swapped pieces mid-opening.  Mesh identity is now
-first + last vertex, model draws only pair with the same mesh.
-
-### Frame rate on the real display (`runs/p_*`)
-
-Final build (`runs/f_*`, after the in-between fix in 943f1a5):
-
-| run | scenes | windows | fps (median / worst) | GPU ms/frame | interval p50 / p95 / p99 ms | replay ms | match ms | first response ms | 3D draws/tick |
-|---|---|---|---|---|---|---|---|---|---|
-| f_dx_240/hfr_roll | gameplay | 7 | 86 / 60 | 5.82 | 15.35 / 16.70 / 16.75 | 1.12 | 1.02 | 5.1 | 4347 |
-| f_dx_240/hfr_roll | light | 6 | 237 / 107 | 0.38 | 4.15 / 4.28 / 6.32 | 0.10 | 0.07 | 4.5 | 70 |
-| f_gl_240/hfr_roll | gameplay | 8 | 105 / 62 | n/a | 9.43 / 16.65 / 16.65 | 1.75 | 1.07 | 7.5 | 4576 |
-| f_gl_240/hfr_roll | light | 5 | 228 / 157 | n/a | 4.15 / 4.20 / 8.35 | 0.09 | 0.06 | 4.3 | 0 |
-| f_dx_120/hfr_roll | gameplay | 8 | 81 / 60 | 6.76 | 12.43 / 16.73 / 16.80 | 1.10 | 0.97 | 8.8 | 3758 |
-| f_dx_120/hfr_roll | light | 5 | 120 / 89 | 0.35 | 8.30 / 8.45 / 8.55 | 0.10 | 0.06 | 8.7 | 0 |
-| f_gl_120/hfr_roll | gameplay | 8 | 79 / 60 | n/a | 15.08 / 16.65 / 16.75 | 2.08 | 1.09 | 9.4 | 5290 |
-| f_gl_120/hfr_roll | light | 5 | 120 / 91 | n/a | 8.30 / 8.30 / 8.40 | 0.07 | 0.06 | 8.4 | 0 |
-| f_dx_240/boat | gameplay | 4 | 114 / 107 | 5.29 | 8.35 / 12.97 / 16.67 | 1.47 | 0.83 | 9.4 | 4484 |
-| f_dx_240/boat | light | 6 | 240 / 105 | 0.49 | 4.15 / 4.25 / 4.57 | 0.10 | 0.06 | 4.5 | 62 |
-| f_dx_240nv/hfr_roll | gameplay | 7 | 114 / 61 | 5.96 | 7.90 / 16.65 / 16.75 | 1.02 | 0.92 | 5.5 | 4068 |
-| f_dx_240nv/hfr_roll | light | 6 | 237 / 105 | 0.44 | 4.15 / 4.25 / 6.35 | 0.10 | 0.07 | 4.5 | 68 |
-
-Broader matrix on the build before that fix (`runs/p_*`; it drew one extra
-replay per tick, so these numbers are slightly pessimistic):
-
-3840x2160 borderless fullscreen, MSAA 4x, V-Sync on unless `nv`, modes.sh
-scripts (`hfr_roll` = Challenge 1-1 at full tilt, goal + party ball +
-replay, then stage 2).  Medians over 5-second windows; "gameplay" = windows
-with >= 1000 3D draws per tick, "light" = menus / loading / pause.
-Interval percentiles are present-to-present times.  GPU ms = D3D12
-timestamps per frame (GL: n/a).
-
-| run | scenes | windows | fps (median / worst) | GPU ms/frame | interval p50 / p95 / p99 ms | replay ms | match ms | first response ms | 3D draws/tick |
-|---|---|---|---|---|---|---|---|---|---|
-| p_gl_240/hfr_roll | gameplay | 8 | 85 / 60 | n/a | 12.70 / 16.65 / 16.65 | 1.06 | 1.02 | n/a | 4526 |
-| p_gl_240/hfr_roll | light | 5 | 239 / 129 | n/a | 4.15 / 4.20 / 4.25 | 0.06 | 0.05 | n/a | 0 |
-| p_dx_240/hfr_roll | gameplay | 7 | 103 / 60 | 6.08 | 7.25 / 16.70 / 16.75 | 0.94 | 0.88 | n/a | 4180 |
-| p_dx_240/hfr_roll | light | 6 | 203 / 104 | 0.78 | 4.15 / 10.45 / 10.57 | 0.08 | 0.06 | n/a | 13 |
-| p_gl_120/hfr_roll | gameplay | 8 | 88 / 60 | n/a | 9.27 / 16.65 / 16.70 | 1.29 | 1.02 | n/a | 5105 |
-| p_gl_120/hfr_roll | light | 5 | 120 / 93 | n/a | 8.30 / 8.45 / 8.45 | 0.06 | 0.06 | n/a | 0 |
-| p_dx_120/hfr_roll | gameplay | 8 | 80 / 61 | 5.45 | 13.03 / 16.67 / 16.75 | 1.55 | 1.54 | n/a | 3815 |
-| p_dx_120/hfr_roll | light | 5 | 120 / 90 | 1.06 | 8.30 / 8.45 / 8.50 | 0.09 | 0.05 | n/a | 0 |
-| p_dx_240nv/hfr_roll | gameplay | 7 | 84 / 60 | 5.78 | 11.70 / 16.70 / 16.75 | 0.92 | 0.93 | n/a | 3185 |
-| p_dx_240nv/hfr_roll | light | 6 | 231 / 106 | 0.54 | 4.15 / 5.90 / 7.22 | 0.11 | 0.10 | n/a | 69 |
-| p_dx_uncnv/hfr_roll | gameplay | 7 | 86 / 60 | 6.89 | 12.50 / 16.70 / 16.80 | 0.90 | 0.83 | n/a | 3181 |
-| p_dx_uncnv/hfr_roll | light | 6 | 1277 / 232 | 0.38 | 0.30 / 3.42 / 6.12 | 0.07 | 0.07 | n/a | 68 |
-| p_gl_240nv/hfr_roll | gameplay | 8 | 74 / 60 | n/a | 16.60 / 16.65 / 16.70 | 1.28 | 1.02 | n/a | 5122 |
-| p_gl_240nv/hfr_roll | light | 5 | 239 / 158 | n/a | 4.15 / 4.20 / 4.30 | 0.07 | 0.06 | n/a | 0 |
-| p_dx_240/boat | gameplay | 4 | 97 / 93 | 6.36 | 9.72 / 14.20 / 15.10 | 1.30 | 0.86 | n/a | 4436 |
-| p_dx_240/boat | light | 6 | 236 / 104 | 0.89 | 4.15 / 4.78 / 5.62 | 0.10 | 0.06 | n/a | 64 |
-| p_gl_240/boat | gameplay | 5 | 60 / 60 | n/a | 16.60 / 16.90 / 17.55 | 3.01 | 0.91 | n/a | 4639 |
-| p_gl_240/boat | light | 5 | 239 / 157 | n/a | 4.15 / 4.25 / 4.35 | 0.09 | 0.07 | n/a | 0 |
-
-| run | scenes | windows | fps (median / worst) | GPU ms/frame | interval p50 / p95 / p99 ms | replay ms | match ms | first response ms | 3D draws/tick |
-|---|---|---|---|---|---|---|---|---|---|
-| p_dx_120/boat | gameplay | 5 | 95 / 93 | 6.09 | 9.55 / 14.20 / 15.10 | 1.28 | 0.83 | n/a | 4308 |
-| p_dx_120/boat | light | 5 | 120 / 91 | 0.75 | 8.30 / 8.45 / 8.55 | 0.09 | 0.06 | n/a | 0 |
-| p_gl_120/boat | gameplay | 5 | 61 / 60 | n/a | 16.65 / 16.85 / 17.25 | 3.11 | 0.86 | n/a | 4606 |
-| p_gl_120/boat | light | 5 | 115 / 94 | n/a | 8.30 / 8.45 / 16.65 | 0.06 | 0.06 | n/a | 0 |
-| p_dx_240/menus | gameplay | 5 | 108 / 74 | 4.18 | 10.25 / 16.65 / 16.70 | 0.79 | 0.38 | n/a | 1920 |
-| p_dx_240/menus | light | 1 | 152 / 152 | 1.55 | 4.15 / 16.65 / 16.70 | 0.11 | 0.06 | n/a | 157 |
-| p_dx_240/dogfight | gameplay | 5 | 175 / 124 | 3.98 | 5.50 / 6.80 / 11.95 | 0.78 | 0.61 | n/a | 2211 |
-| p_dx_240/dogfight | light | 5 | 239 / 136 | 0.50 | 4.15 / 4.35 / 4.45 | 0.09 | 0.06 | n/a | 0 |
-| p_dx_240/baseball | gameplay | 4 | 179 / 121 | 2.21 | 5.10 / 9.07 / 10.93 | 1.46 | 1.30 | n/a | 6530 |
-| p_dx_240/baseball | light | 6 | 224 / 100 | 0.76 | 4.15 / 6.32 / 8.35 | 0.08 | 0.06 | n/a | 68 |
-| p_gl_240/story | gameplay | 25 | 93 / 60 | n/a | 11.55 / 16.65 / 16.65 | 1.22 | 1.48 | n/a | 4316 |
-| p_gl_240/story | light | 2 | 160 / 153 | n/a | 4.15 / 16.65 / 16.67 | 0.32 | 0.12 | n/a | 479 |
-| p_dx_240/story | gameplay | 25 | 120 / 60 | 4.25 | 9.60 / 16.65 / 16.70 | 1.00 | 1.12 | n/a | 3584 |
-| p_dx_240/story | light | 2 | 154 / 153 | 1.59 | 4.15 / 16.65 / 16.70 | 0.12 | 0.08 | n/a | 288 |
-| p_dx_display/hfr_roll | gameplay | 7 | 110 / 62 | 5.77 | 6.25 / 16.65 / 16.70 | 0.91 | 0.90 | n/a | 4197 |
-| p_dx_display/hfr_roll | light | 6 | 236 / 106 | 0.61 | 4.15 / 4.85 / 5.57 | 0.09 | 0.07 | n/a | 69 |
-| p_gl_uncnv/hfr_roll | gameplay | 8 | 76 / 60 | n/a | 16.65 / 16.65 / 16.65 | 1.39 | 1.02 | n/a | 5055 |
-| p_gl_uncnv/hfr_roll | light | 5 | 1399 / 302 | n/a | 0.55 / 1.55 / 2.15 | 0.06 | 0.06 | n/a | 0 |
-
-Reading the table (window detail, `tools/hfr/hfrperf.py runs/p_dx_240/hfr_roll/log.txt`):
-
-* Menus / light scenes: 240 fps locked (p50 4.15, p99 4.3 ms) at 240,
-  120 locked at 120; uncapped (V-Sync off) 1300-1400 fps.
-* Light gameplay (stage 2, 2.7-3.2k draws, GPU ~3 ms/frame at 4K):
-  D3D12 240 -> 180-199 fps (p50 4.2-4.7 ms, p99 8.1-8.4 ms; final build);
-  120 -> 120 locked (p99 9.2).
-* Party games (D3D12 240): dogfight 175, baseball 179, boat 97 (copies),
-  story cutscenes 120 (median).
-* Heavy windows (goal party ball + replay, 8-10k draws, GPU 6-12 ms/frame at
-  4K): 60-64 - the GPU cannot draw a second frame in the tick; the pacer
-  keeps the game at 60 (worst window over all runs: 60 fps).
-* GL vs D3D12: GL's replay is slower per draw and has no GPU timing, so it
-  reaches fewer in-between frames in gameplay (boat stays at 60: its EFB
-  copies blit the whole 4K frame per copy).  **D3D12 is the recommended
-  renderer for high frame rates at 4K.**
-* No game slowdown: every 5 s window in every run >= 60 ticks/s; ticks
-  that would run late degrade to the plain 60 fps path.
-* Before the D3D12 shader fix, the same gameplay was GPU-bound at 60 fps
-  even without HFR (100% GPU at 4K MSAA 4x; now ~40-55% at 60 fps).
-
-### Latency
-
-The tick frame is presented at the same time as at 60 fps (no added
-latency for the newest tick).  The first frame that shows the new tick
-(the first in-between frame) is presented, measured from the tick start
-(input already read): **240 fps: 4.5-5.1 ms, 120 fps: 8.4-8.8 ms, vs 16.7 ms
-at 60 fps** (statistic `first` in the `[hfr]` line, table column "first
-response").  In heavy windows without in-between frames it is 16.7 ms,
-like 60 fps.
-
-## 9. 60 fps = today
+## 9. 60 fps
 
 With the frame-rate setting at 60 the proxy is never selected
 (`hfr_select` returns the backend itself): nothing is recorded or
 replayed, the hooks return at once (no batch flush), and the pacer takes
-the 60 Hz path.  Verified against a dx12-x64 baseline build (x64, modes
-intro + menus + challenge, 51 dumped frames per renderer; the game is not
-fully deterministic, so each frame is judged against a second baseline run):
-
-| renderer | base = base2 and base = new | base = base2, base != new | base != base2 |
-|---|---|---|---|
-| GL | 20 | 1 (menus 500: max diff 1, a few pixels) | 30 |
-| D3D12 | 20 | 3 (frame 600 of intro/menus/challenge: sparkle trail) | 28 |
-
-The exceptions are run-to-run variation: frame 600's sparkle trail differs
-between the two GL baseline runs too (and matches base vs new there), and
-GL menus 500 differs by one level in a handful of pixels.  Lists:
-`runs/gl60.txt`, `runs/dx60.txt`.  The D3D12 pixel shader change (array
-selects, used-texcoord mask) is arithmetically identical and part of this
-check.
+the 60 Hz path.
 
 Determinism: the logic loop, its inputs and its order are untouched;
 replays run no game code and never touch gx_core state the game reads

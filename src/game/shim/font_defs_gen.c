@@ -1,6 +1,5 @@
-/* Auto-generated from GM2E8P main.dol by gen_font_defs.py.
- * FONT_DEFINITIONS lived in DOL .data at 0x80081D80; the port does not
- * load the DOL image, so the table is reproduced here natively. */
+/* FONT_DEFINITIONS, extracted from the GM2E8P main.dol .data at
+ * 0x80081D80 (the port does not load the DOL image), as a native table. */
 #include "bitmap.h"
 
 static u16 s_font0_string[] = { 0 };

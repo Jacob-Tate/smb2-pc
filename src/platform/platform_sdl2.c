@@ -102,10 +102,9 @@ static bool sdl2_init(PlatformContext* ctx, const PlatformConfig* config) {
     s_cfg_copy = *config;
     s_cfg = &s_cfg_copy;
 
-    /* Declare per-monitor DPI awareness before the video subsystem starts.
-     * Without it, Windows display scaling (e.g. 150% on a 3840x2160 screen)
-     * makes the desktop look like 2560x1440 to us: the game rendered at the
-     * scaled size and Windows stretched it back up (blurry, never real 4K).
+    /* Per-monitor DPI awareness, before the video subsystem starts: without
+     * it Windows display scaling shrinks the desktop we see (3840x2160 at 150%
+     * looks like 2560x1440) and stretches our output back up.
      * SDL_WINDOW_ALLOW_HIGHDPI alone does nothing on Windows. */
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
 
@@ -124,9 +123,6 @@ static bool sdl2_init(PlatformContext* ctx, const PlatformConfig* config) {
         free(data);
         return false;
     }
-
-    /* Initialize Glad or similar for OpenGL function loading */
-    /* For now, assume core profile functions are available */
 
     printf("DEBUG: About to init start_ticks\n");
     fflush(stdout);
@@ -525,7 +521,7 @@ static void sdl2_set_fullscreen(PlatformContext* ctx, bool fullscreen) {
 }
 
 static bool sdl2_show_resolution_picker(PlatformContext* ctx, int* out_w, int* out_h, bool* out_fullscreen) {
-    /* Simple console-based picker for now - could be replaced with a GUI dialog */
+    /* console picker */
     printf("\n=== Resolution Picker ===\n");
     printf("Available display modes:\n");
 
@@ -700,11 +696,10 @@ int platform_save_list(char*** out_names) {
     return count;
 }
 
-/* ISO picker - uses SDL native file dialog */
+/* ISO picker */
 
 bool platform_show_iso_picker(char** out_path) {
-    /* SDL2 doesn't have native file dialog in 2.0, use zenity/kdialog on Linux */
-    /* For cross-platform, we'd use SDL3 or a separate library */
+    /* SDL2 has no native file dialog: ask on the console */
     pc_user_msg("\n=== ISO Selector ===\n");
     pc_user_msg("Enter path to GameCube ISO/GCM file (blank to skip):\n> ");
 
@@ -1076,8 +1071,8 @@ bool platform_recover_gamedata(const char* why) {
 
 /* Game data search order (docs/installer.md): --gamedata, --iso, install.ini
  * gamedata, (installed) the per-user re-extracted copy, the settings.dat ISO
- * path, the ISO prompt.  Portable runs without --gamedata take exactly the
- * old --iso -> settings -> prompt path. */
+ * path, the ISO prompt.  Portable runs without --gamedata use
+ * --iso -> settings -> prompt. */
 bool platform_resolve_game_data(const char* gamedata_arg, const char* iso_arg) {
     char msg[1024];
     const char* why = "no game data folder is configured";

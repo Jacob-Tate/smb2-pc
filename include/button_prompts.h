@@ -1,21 +1,18 @@
 /* PC port: controller-specific on-screen button prompts.
  *
- * The game's prompts name GameCube buttons, either as pad-button icon glyphs
- * of the asc_24x24 ARAM font (SJIS 0x839F.. "p/BUTTON_A/", used by the menu
- * help bars, name entry, ...) or as words in text ("A Button",
- * "START/PAUSE").  With a PlayStation, Xbox or Switch controller in use, the
- * icon glyphs are replaced by that controller's button icons (PNGs under
- * assets/prompts/<style>/, code-drawn icons if a file is missing) and the
- * English button words are rewritten.
+ * The game names GameCube buttons either as icon glyphs of the asc_24x24
+ * ARAM font (SJIS 0x839F.., "p/BUTTON_A/") or as words in text ("A Button",
+ * "START/PAUSE").  For a PlayStation, Xbox or Switch style the glyphs are
+ * replaced by that controller's icons (PNGs in assets/prompts/<style>/, drawn
+ * in code if a file is missing) and the English button words are rewritten.
  *
- * The port maps SDL buttons by position (south = GC A, east = GC B, west =
- * GC X, north = GC Y; input_sdl2.c turns SDL's Nintendo label layout off), so
- * e.g. GC A is Cross on a PlayStation pad, A on an Xbox pad and B on a Switch
- * pad.  Triggers: LT/RT (L2/R2, ZL/ZR) = GC L/R, RB (R1, R) = GC Z.
+ * Button mapping follows input_sdl2.c: by position on PlayStation / Xbox
+ * pads (GC A = Cross / A), by label on Switch pads (GC A = A).  LT/RT = GC
+ * L/R, RB = GC Z.
  *
  * Style: --button-style / SMB2_BUTTON_STYLE (auto|gc|ps|ps4|ps5|xbox|switch),
- * else the "Buttons" PC setting.  Auto follows the controller that was used
- * last (input_controller_type) and falls back to the GameCube look. */
+ * else the "Buttons" PC setting.  Auto follows the controller used last
+ * (input_controller_type) and falls back to the GameCube look. */
 #ifndef BUTTON_PROMPTS_H
 #define BUTTON_PROMPTS_H
 

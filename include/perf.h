@@ -13,9 +13,9 @@
 enum {
     PERF_T_SWAP,      /* SDL_GL_SwapWindow (vsync wait shows up here) */
     PERF_T_PACE,      /* video_finish_frame sleep */
-    PERF_T_FLUSH,     /* gl_flush_batch: uniforms + buffer upload + draw */
+    PERF_T_FLUSH,     /* gx_flush_batch: constants + vertex upload + draw */
     PERF_T_COPYTEX,   /* GXCopyTex: readback/encode/upload */
-    PERF_T_TEXCREATE, /* texture decode + glTexImage2D (cache misses) */
+    PERF_T_TEXCREATE, /* texture decode + upload (cache misses) */
     PERF_T_TEXINIT,   /* GXInitTexObj total (includes TEXCREATE) */
     PERF_T_AUDIO,     /* musyx_frame */
     PERF_T_COUNT

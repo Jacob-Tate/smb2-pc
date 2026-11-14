@@ -29,10 +29,9 @@ static int s_mapped_real; /* 1 if s_gc_mem == (u8*)GC_MEM_BASE */
 #define GC_CORE_CLOCK  486000000u
 
 #ifdef _WIN32
-/* Reserve the GC RAM range before anything else runs.  In a 64-bit process
- * the GL driver and SDL allocate bottom-up and can land on 0x80000000 by
- * the time gc_mem_init() runs (seen: ERROR_INVALID_ADDRESS with the
- * NVIDIA driver). */
+/* Reserve the GC RAM range before anything else runs: in a 64-bit process
+ * the GL driver and SDL allocate bottom-up and can take 0x80000000 before
+ * gc_mem_init() runs. */
 __attribute__((constructor)) static void gc_mem_reserve_early(void)
 {
     VirtualAlloc((void *)(uintptr_t)GC_MEM_BASE, GC_MEM_SIZE, MEM_RESERVE,

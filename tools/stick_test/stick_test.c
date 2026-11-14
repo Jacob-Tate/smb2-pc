@@ -185,12 +185,13 @@ int main(int argc, char** argv)
         CHECK(x == -gcs_game_curve[52], "negative half gate -> %d", x);
     }
 
-    /* --- response table: old PC mapping (SDL/256 straight to the game) vs
-     * new (emulated GC pad + the game's processing).  Tilt = value / 60. */
+    /* --- response table: a naive linear mapping (SDL/256 straight to the
+     * game, "old") vs the emulated GC pad + the game's processing ("new").
+     * Tilt = value / 60. */
     printf("deflection  old fwd  new fwd  | new diag (x,y) | raw GC fwd / diag\n");
     for (i = 0; i <= 20; i++) {
         double d = i / 20.0;
-        int oldv = (int)(d * 32767) / 256;   /* old stick_axis() */
+        int oldv = (int)(d * 32767) / 256;   /* linear SDL/256 */
         int gx, gy, dx, dy, rx, ry, rdx, rdy;
         game_tilt(&c, 0, (float)d, &gx, &gy, &rx, &ry);
         game_tilt(&c, (float)(d * cos(PI / 4)), (float)(d * sin(PI / 4)), &dx, &dy, &rdx, &rdy);

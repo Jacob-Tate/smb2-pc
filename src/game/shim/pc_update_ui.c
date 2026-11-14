@@ -1,22 +1,7 @@
-/* In-game updater UI (docs/updater.md), drawn with the game's own pieces
- * (wood box, menu font, menu sounds, the yes/no box style of pc_quit.c);
- * the model and the network side are src/platform/pc_update.c.
- *
- *  1. Release notes box (pc_update_notes_run): "Update available", the new
- *     and the current version, the release notes (Markdown made plain,
- *     word-wrapped, scrolled with Up/Down) and Update now / Later / Skip this
- *     version.  Portable copies (no install.ini) get "Open download page"
- *     instead of "Update now".  Update now downloads with a progress bar,
- *     verifies the SHA-256 and starts Setup; then the game quits through
- *     pc_quit (which waits for memory card jobs).
- *     Opened by the automatic check only at a safe moment: pc_quit.c's
- *     pc_menu_quit_tick (title screen with PRESS START / idle Mode Select,
- *     no Quit box, no memory card job) requests it, video_finish_frame runs
- *     it modally over the frozen frame, like the F1 overlay.
- *  2. Updates screen (pc_update_screen_run): version, "Check automatically"
- *     On/Off, "Check now", Back.  From Options > Game Screen ("Updates" row,
- *     PCS_ITEM_UPDATES) and the F1 overlay.
- * Strings: one per game locale (en de fr es it ja); the notes stay as written. */
+/* In-game updater UI: the release notes box and the Updates screen, drawn
+ * with the game's own pieces (wood box, menu font, menu sounds, the yes/no
+ * style of pc_quit.c).  The model and network side is pc_update.c; see
+ * docs/updater.md. */
 #include "gc_intrinsics.h"
 
 struct StickPoint;

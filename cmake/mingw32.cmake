@@ -1,6 +1,6 @@
-# Toolchain for 32-bit Windows cross-build (i686-w64-mingw32)
-# The decompiled game code assumes 32-bit pointers (GameCube/PSP), so the
-# game-linked port MUST be built 32-bit.
+# Toolchain for 32-bit Windows cross-build (i686-w64-mingw32).
+# The decompiled game code was written for 32-bit pointers, so this build needs
+# no layout adjustments; the x64 build uses cmake/llvm-mingw64.cmake.
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86)
 

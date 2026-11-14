@@ -1,44 +1,8 @@
-/* Byte-swap + load shim for GMA model archives (big-endian disc data).
- *
- * In the SMB2 decomp every GMA load funnels through the "avload" module,
- * which is still asm-only (symbols g_load_raw_gma 0x80065984, g_load_gma
- * 0x80065AA8, g_init_gma 0x8006A8DC, g_init_gma_model_materials
- * 0x8006A9C8).  There is therefore no decompiled C fixup to hook with an
- * #ifndef __MWERKS__ guard; instead this file provides PC implementations
- * of the loader entry points, mirrored from the GC asm, with the byte
- * swap (pc_swap_gma) run right after the file bytes land in memory and
- * BEFORE the offset->pointer fixup.
- *
- * GMA layout (decomp include/avdisp.h + ref smb-decomp/src/gma.h):
- *   archive  { u32 numModels; u32 modelsBaseOff;
- *              numModels * { u32 modelOff; u32 nameOff };   (0xFFFFFFFF
- *              modelOff = "null model" sentinel, per g_init_gma asm)
- *              name string blob (NOT swapped);
- *              per-model GCMF data at modelsBaseOff + modelOff }
- *   GCMF     0x40 header { u32 magic "GCMF"; u32 flags; Vec center;
- *              f32 radius; u16 tevLayerCount, opaqueShapeCount,
- *              translucentShapeCount; u8 mtxCount, pad;
- *              u32 headerSize; (texObjs ptr @0x24 is runtime-only);
- *              u8 mtxIndexes[8]; filler to 0x40 }
- *   tev lyr  0x20 each at +0x40 { u32 flags; u16 texIndex; s8 lodBias;
- *              u8 maxAniso; (texObj ptr @0x8 runtime); filler }
- *   mtxs     mtxCount * Mtx (12 f32) right after the tev layers
- *              (STITCHING: ref u_get_stitching_model_mtx; SKIN: bind
- *              matrices used by draw_poly(model, NULL))
- *   shapes   at model + headerSize, count = opaque + translucent.
- *              0x60 header (struct GMAShape) followed by GX display-list
- *              bytes which are parsed byte-by-byte at draw time and must
- *              NOT be swapped.  dispListFlags bits 0/1 select
- *              dispListSizes[0/1]; bits 2/3 mean an extra 0x20 block
- *              { u8 mtxIndices[8]; u32 sizes[2]; filler } + two more
- *              display lists follows (ref next_shape()).
- *   skin     if (flags & (GCMF_SKIN|GCMF_EFFECTIVE)): a 0x20 pre-header
- *              of u32 offsets sits at model + headerSize (field @0x1C is
- *              overwritten with model->flags at load, @0x8/@0xC are
- *              offsets to the CPU-deformed vertex data); the shapes
- *              follow it with a flat 0x60 stride and no inline display
- *              lists (ref draw_indexed_model / set_shape_flags_in_model).
- */
+/* Byte swap and PC loader for GMA model archives (big-endian disc data).
+ * The decomp's avload module is asm-only, so this file implements its GMA
+ * entry points (mirrored from the asm) and swaps each archive after it is
+ * loaded and before the offset->pointer fixup.  Display lists and name
+ * strings are not swapped.  Layout: see docs/endian.md, GMA archives. */
 #include "shim.h"
 #include <stdio.h>
 #include <string.h>
@@ -124,12 +88,10 @@ void pc_swap_gma_model(void *modelData)
          * texObj pointer, rest is filler */
     }
 
-    /* model transform matrices between the tev layers and the shapes.
-     * Not only STITCHING models carry them: SKIN models do too (the bind
-     * matrices that draw_poly(model, NULL) (asm 0x8006977C) points the
-     * skinning slots at - e.g. AiAi's hair, whose ape part has no bone
-     * map).  Swap the block whenever mtxCount says it is there and it fits
-     * before the shapes. */
+    /* model matrices between the tev layers and the shapes: STITCHING
+     * models, and SKIN models whose bind matrices draw_poly(model, NULL)
+     * (asm 0x8006977C) uses (e.g. AiAi's hair).  Swap the block whenever
+     * mtxCount says it is there and it fits before the shapes. */
     if ((flags & GCMF_STITCHING) ||
         (m[0x1E] != 0 &&
          0x40 + tevCount * 0x20 + (u32)m[0x1E] * 0x30 <= headerSize)) {
@@ -335,10 +297,8 @@ void pc_swap_gma(void *gmaFileData)
  *
  * Mirrored from the GC asm (auto_03_80053ABC_text.s); they use the
  * decomp's C file/heap APIs (like bitmap.c's load_bmp) instead of the
- * original DVD function-pointer table.  The per-model texture/material
- * init (g_init_gma_model_materials, asm 0x8006A9C8) is declared weak:
- * until the avdisp renderer port provides it, the weak fallback below
- * just logs once.  Remove the fallback when the real port lands. */
+ * original DVD function-pointer table.  g_init_gma_model_materials
+ * (asm 0x8006A9C8) is weak here; avdisp_shim.c provides the real one. */
 
 /* struct File, file.h: 0x50 bytes on GC/32-bit, larger on x64 (the
  * DVDFileInfo inside holds pointers); keep headroom and check it. */
@@ -448,11 +408,10 @@ struct PcGMA *g_load_gma(char *file, void *tpl)
 }
 
 /* asm 0x80065CA8: load a .tpl texture archive; the TPL struct (0x20 bytes
- * incl. padding) is allocated in front of the raw file data.  Header words
- * are swapped by the existing pc_swap_tpl (endian_fix.c) — headers only;
- * the tiled texel payload stays raw big-endian, the GL backend decodes it.
- * No LZ path and no imageOffset->pointer fixup in the original either
- * (consumers use tpl->fileData + texHeaders[i].imageOffset). */
+ * incl. padding) is allocated in front of the raw file data.  pc_swap_tpl
+ * swaps the headers only; the texel payload stays big-endian and is
+ * decoded by the renderer.  As in the original there is no LZ path and no
+ * imageOffset fixup (consumers use tpl->fileData + imageOffset). */
 extern void pc_swap_tpl(void *fileData);
 
 struct PcTPL                                   /* struct TPL, bitmap.h */

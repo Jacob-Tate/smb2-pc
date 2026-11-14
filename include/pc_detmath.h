@@ -130,7 +130,7 @@ void pc_qsort();
 #define ceilf(x)     pc_ceilf(x)
 #define lrintf(x)    pc_lrintf(x)
 
-/* Not implemented (unused by game code today): fail at link time. */
+/* Not implemented (unused by game code): fail at link time. */
 double pc_libm_missing_exp(double), pc_libm_missing_log(double);
 double pc_libm_missing_log10(double), pc_libm_missing_log2(double);
 double pc_libm_missing_exp2(double), pc_libm_missing_hyperbolic(double);

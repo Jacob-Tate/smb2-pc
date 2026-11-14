@@ -9,9 +9,8 @@
 extern "C" {
 #endif
 
-/* SMB2 Save File Structure - matches original GameCube memory card format */
-/* Memory Card: 59 blocks x 8192 bytes = 483,328 bytes total */
-/* SMB2 uses 1 file per save slot (A, B, C) */
+/* Standalone save format (save.c), not used by the game: its memory card
+ * saves go through card_shim.c in the GC format. */
 
 #define SMB2_SAVE_MAGIC       0x534D4232  /* "SMB2" */
 #define SMB2_SAVE_VERSION     1

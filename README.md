@@ -230,18 +230,18 @@ build that only writes below a test folder ([docs/installer.md](docs/installer.m
 ## Documentation
 
 - [docs/x64.md](docs/x64.md): the 64-bit build (`__ptr32` fields, low-memory
-  layout, debugging)
-- [docs/d3d12.md](docs/d3d12.md): the Direct3D 12 renderer
+  layout, debugging, checklist for pointer-size changes and the test harness)
+- [docs/d3d12.md](docs/d3d12.md): the renderers (GX core, OpenGL, Direct3D 12)
+- [docs/endian.md](docs/endian.md): byte-swapping the big-endian disc data
 - [docs/hfr.md](docs/hfr.md): high frame rates (interpolation)
 - [docs/detmath.md](docs/detmath.md): deterministic math
 - [docs/stick.md](docs/stick.md): analog stick emulation
+- [docs/audio.md](docs/audio.md): audio (MusyX synth, aux effects, output)
 - [docs/language.md](docs/language.md): languages and text encoding
 - [docs/installer.md](docs/installer.md): installer, game data extraction,
   installed/portable layout
 - [docs/updater.md](docs/updater.md): in-game update check and the release
   procedure (`tools/make_release.sh`, SHA256SUMS.txt)
-- [docs/x64_work_packages.md](docs/x64_work_packages.md): checklist for
-  pointer-size changes and the test harness (`tools/x64test/modes.sh`)
 
 ## Credits and licenses
 

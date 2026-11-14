@@ -7,7 +7,7 @@ Reports every global whose definition is an integer / byte array (u8 x[N],
 u32 x, int x, ...) while some other declaration ("extern ... x") uses a
 pointer or struct type, or vice versa.  On 32-bit these alias harmlessly;
 on x64 the pointer / struct is bigger than the storage.  See
-docs/x64_work_packages.md.
+docs/x64.md, Debugging and tools.
 """
 import re, sys, glob, os
 roots = sys.argv[1:]

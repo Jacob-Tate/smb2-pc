@@ -15,8 +15,8 @@
   other store to `locale` in the DOL or any REL, and no call to
   `OSGetLanguage` / SRAM language code (`OSGetFontEncode` is only used by the
   debug window / DEMO font).  So the Dolphin IPL language setting has no
-  effect on this disc; the reference runs force it with a Gecko code
-  (`04198B30 0000000N`, `locale` = 0x80198B30).
+  effect on this disc; to see another language on the original, force it
+  with a Gecko code (`04198B30 0000000N`, `locale` = 0x80198B30).
 * The US disc's European text is unfinished: of the ~390 6-entry tables in the
   code about 45 % have `""` for German/French/Spanish/Italian (all sel_ngc
   menus, How to play, Story menus, view stage ...), the memory card messages
@@ -51,11 +51,11 @@
   if the Windows UI language is Japanese, else English (the US disc's European
   text is too incomplete to pick it unasked).
 * **Source encoding** (`tools/pc_decomp_text.py`, CMakeLists.txt): the GC build
-  runs MWCC through sjiswrap (UTF-8 source -> cp932).  GCC/Clang kept the
-  UTF-8 bytes, so every Japanese literal in hud.c, how_to.c, race2_5.c,
-  boat_10.c, dip.c, window_menu.inc was wrong on PC.  Those TUs are now
-  compiled from copies whose non-ASCII literals are SJIS `\x` escapes; all
-  437 literals match the GC objects byte for byte.
+  runs MWCC through sjiswrap (UTF-8 source -> cp932); GCC/Clang keep the
+  UTF-8 bytes.  So the TUs with Japanese literals (hud.c, how_to.c,
+  race2_5.c, boat_10.c, dip.c, window_menu.inc) are compiled from copies
+  whose non-ASCII literals are SJIS `\x` escapes, byte for byte the GC
+  objects' literals.
 * **Decoding** (`textdraw.c` `pc_text_is_lead`, used by textdraw, dialog.c,
   adv_demo.c, scen_disp.c, hud.c): English and Japanese keep the original
   rule.  German/French/Spanish/Italian: only 0x81-0x84 (the SJIS rows the font
@@ -71,9 +71,7 @@
   per locale, string literals or `char x[] = "..."` names) whose German/
   French/Spanish/Italian entry is missing (`""`, `--`, `---`, `***`,
   `XXX GER/FRA/SPA/ITA`) gets the English entry there.  English and Japanese
-  never read those entries, so their text is unchanged.  (A first version
-  scanned the exe's pointer tables at run time; it also matched non-text
-  pointer arrays, so it was dropped.)
+  never read those entries, so their text is unchanged.
 * **Title PRESS START**: the English line when the localized one has
   characters font 4 lacks (German, Japanese).
 * **PC text** (`pc_text.c`): written as UTF-8 6-entry tables, converted to the

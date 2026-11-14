@@ -2006,8 +2006,8 @@ static int dx_copy_tex_result(uint64_t ticket, void* raw, void* conv, int wait) 
 
 /* GXCopyTex fast path: area-resample the GL-space rect (x,y,w,h) of the
  * resolved target to dw x dh on the GPU and read back only that (RGBA8,
- * output rows top-down).  The full-size readback + CPU resample cost
- * 10-16 ms per copy at 1440p/MSAA 8x (stage select copies every frame). */
+ * output rows top-down), instead of a full-size readback and CPU resample
+ * (the stage select copies every frame). */
 static int dx_read_pixels_box(int x, int y, int w, int h, int dw, int dh, void* out) {
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp;
     D3D12_TEXTURE_COPY_LOCATION dst, src;

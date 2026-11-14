@@ -1,5 +1,5 @@
 #!/bin/bash
-# Memory-card compatibility test, 32-bit <-> x64 (docs/x64.md, "Shims, memcard, replays").
+# Memory-card compatibility test, 32-bit <-> x64 (docs/x64.md, "Memory card and replay compatibility").
 #
 #   card_xarch.sh <bin32> <bin64> [renderer] [label]
 #   (output in $WS/runs/<label>/, default card_xarch; SMB2_HEAP_CHECK is

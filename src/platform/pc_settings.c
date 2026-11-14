@@ -2,8 +2,8 @@
  * line overrides, live apply, and the item API used by the settings screens.
  *
  * settings.dat is a small text file ("SMB2PC 1" header, key=value lines) in
- * platform_get_save_dir().  The old format (a raw GameSettings struct with
- * the ISO path appended) is still read so a saved ISO path carries over. */
+ * platform_get_save_dir().  The legacy binary format (a raw GameSettings
+ * struct with the ISO path appended) is read too, for its ISO path. */
 #include "pc_settings.h"
 #include "button_prompts.h"
 #include "pc_text.h"
@@ -305,7 +305,7 @@ void pcs_set_iso_path(const char* path) {
     pcs_save();
 }
 
-/* Old GameSettings API (platform.h), kept for the ISO path flow. */
+/* Legacy GameSettings API (platform.h), used by the ISO path flow. */
 void settings_get_defaults(GameSettings* settings) {
     PcSettings d;
     if (!settings) return;
@@ -345,7 +345,7 @@ static int s_active_renderer = -1;
 int pcs_active_renderer(void) { return s_active_renderer < 0 ? g_pcs.renderer : s_active_renderer; }
 void pcs_set_active_renderer(int r) { s_active_renderer = r; }
 
-/* frame rate (docs/hfr.md): 60 = no interpolation (today's exact path);
+/* frame rate (docs/hfr.md): 60 = no interpolation;
  * anything else takes effect at the next tick */
 void pcs_set_active_fps(int fps) { (void)fps; }
 int g_pcs_vsync_on(void) { return g_pcs.vsync != 0; }

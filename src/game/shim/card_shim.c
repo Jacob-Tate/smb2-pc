@@ -1,27 +1,19 @@
-/* File-backed GameCube memory card (CARD library) emulation.
+/* File-backed GameCube memory card (CARD library) emulation, at the file
+ * level (no raw card image).  Slot A (chan 0) is a directory:
  *
- * Emulates the CARD API at the *file* level (no raw card image).  Slot A
- * (chan 0) is a directory next to the exe:
+ *     memcard/slotA/<name>.bin   raw file contents, stat.length bytes
+ *     memcard/slotA/<name>.meta  "key=value" text: CARDStat metadata and the
+ *                                directory slot (fileNo)
  *
- *     <exe dir>/memcard/slotA/<name>.bin   raw file contents, exactly
- *                                          stat.length bytes, written as
- *                                          the game hands them over
- *     <exe dir>/memcard/slotA/<name>.meta  text sidecar, "key=value" lines,
- *                                          holding the CARDStat metadata and
- *                                          the directory slot (fileNo)
- *
- * <name> is the GC file name with every byte outside [A-Za-z0-9._-]
- * escaped as %XX.  Slot B (chan 1) always reports CARD_RESULT_NOCARD.
- *
- * The card is a 16 Mbit (251 user block) card with 8 KiB sectors.
+ * <name> is the GC file name with every byte outside [A-Za-z0-9._-] escaped
+ * as %XX.  Slot B (chan 1) always reports CARD_RESULT_NOCARD.  The card is a
+ * 16 Mbit (251 user block) card with 8 KiB sectors.
  *
  * Async calls do their I/O synchronously: they set the channel result and
- * invoke the completion callback (if any) before returning.  The only
- * caller, decomp main_loop/memcard.c, issues the request and polls
- * CARDGetResultCode() in the same frame (g_some_card_funcs then
- * g_some_card_funcs2), treating BUSY (-1) as "not yet", so immediate
- * completion is fine.  The mount callback it passes is the *detach*
- * callback (marks the card removed), so it is never invoked. */
+ * call the completion callback before returning.  That is fine for the only
+ * caller, decomp main_loop/memcard.c, which polls CARDGetResultCode() and
+ * treats BUSY (-1) as "not yet".  The mount callback it passes is the detach
+ * callback (card removed), so it is never called. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -660,7 +652,7 @@ static void fill_offsets(const CardEntry *e, CARDStat *st)
  * (init 0xFFFF, poly 0x1021, result ~crc) over `size` bytes, using the
  * table at lbl_80080EA0 (identical to the standard 0x1021 table).
  * memcard.c stores it in the first u16 of every game file it writes and
- * checks it on load.  It used to be an auto-generated stub returning 0. */
+ * checks it on load. */
 u16 fn_800648C8(u32 size, void *data)
 {
     static u16 table[256];

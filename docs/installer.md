@@ -204,7 +204,7 @@ i686 and llvm-mingw's windres for x86_64): VERSIONINFO with FileDescription and
 ProductName "SMB2", CompanyName "unofficial PC port", FileVersion/ProductVersion
 from `-DSMB2_VERSION` (installer/build.sh passes its `--version`; default
 `0.0.0-dev`), and the generic `installer/smb2.ico` as the exe icon for
-Explorer. The window/taskbar icon is still made from the disc at runtime. The
+Explorer. The window/taskbar icon is made from the disc at runtime. The
 exe file name stays `smb2_pc_port.exe`. The window title is "SMB2".
 
 ## Installed layout (Windows installer, `installer/smb2.nsi`)
@@ -311,13 +311,13 @@ work.
       recovery, or moved there from the old name's folder), if it's valid;
    3. the ISO path saved in settings.dat;
    4. the recovery flow.
-4. Portable mode (unchanged): the ISO path saved in settings.dat, then the
+4. Portable mode: the ISO path saved in settings.dat, then the
    console ISO prompt.
 
 **Recovery flow:**
 1. The port explains what's wrong on the console. When stdin is interactive,
    it also shows a message box with *Select ISO...* / *Quit*.
-2. It asks for an ISO with the existing console prompt.
+2. It asks for an ISO with the console prompt.
 3. It extracts the ISO into `%LOCALAPPDATA%\SMB2\gamedata`. This
    needs no admin rights. The 5% progress lines go to the console, and SDL
    events are pumped so the window doesn't freeze.
@@ -351,14 +351,8 @@ target. It exists for tests.
 - `installer/test/port_migration_test.sh <exe> <root>`: the port-side
   userdata / recovery-copy migration with the real exe and disc image.
 
-## What the port reads (instrumented)
+## What the port reads
 
-**Method:** `SMB2_DVD_TRACE=1`, applied to all 19 harness modes on 32-bit GL
-(`runs/trace32`).
-
-**Result:** the game read 366 distinct FST files, 146 MB of the 1.04 GB.
-
-**Where reads happen:**
 - Every game read goes through `iso_file_read_at(entry, offset, len)`, which
   the shim uses for DVDRead*, the whole-file loader and the ARAM font.
 - Outside the FST, the port reads only the disc header (0x000-0x440) and the
@@ -368,14 +362,13 @@ target. It exists for tests.
 - `DVDOpen` of `mkb2.*.rel` is intercepted, but the names must exist in the
   FST.
 
-**Why extract everything:** the trace covers only the modes the harness
-drives. Story stages, other party games and replays read files it didn't
-see, so the extraction copies the complete FST tree. The 15 files read at
-boot are the required set that an image must contain (`s_required[]` in
-gamedata.c).
+`SMB2_DVD_TRACE=1` logs every read. Across all harness modes the game reads
+only a few hundred of the FST files (under 15% of the data), but story
+stages, other party games and replays read files the harness doesn't reach,
+so the extraction copies the complete FST tree. The 15 files read at boot are
+the required set an image must contain (`s_required[]` in gamedata.c).
 
-**Equivalence check:** the trace line includes the CRC32 of the bytes the
-caller received:
+The trace line includes the CRC32 of the bytes the caller received:
 
 ```
 [dvdtrace] <entry> <name> ofs=0x.. len=0x.. crc=xxxxxxxx

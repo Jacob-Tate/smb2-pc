@@ -1,6 +1,6 @@
 /* main_loop REL data/bss that only the minigame RELs reference.  The
- * main_loop TUs that own them in the original are not (yet) decompiled with
- * these symbols, so they live here.  Sizes from config/GM2E8P/main_loop. */
+ * main_loop TUs that own them in the original don't define these symbols
+ * in the decomp, so they live here.  Sizes from config/GM2E8P/main_loop. */
 #include "shim.h"
 #include "mathutil.h"
 
@@ -123,14 +123,12 @@ void g_DTK_set_something(u32 v) { (void)v; }
 u32  AIGetStreamSampleCount(void) { return 0; }
 
 /* main_loop .bss 0xD418C: race2 keeps 13 per-phase perf counters here (on GC
- * it runs over the next 12 unnamed words).  The generic 32-byte stub was too
- * small and the overrun zeroed lbl_1_bss_D4188, race2's draw mask. */
+ * they run over the next 12 unnamed words), more than a 32-byte stub holds. */
 u32 lbl_1_bss_D418C[13];
 
-/* DOL .sdata 0x801988E0 points at fullscreen_texture_buf (.data, 0x8C000
- * bytes): the pause menu copies the frame there (take_pausemenu_screenshot)
- * and draws it behind the menu.  The zero stub left the pause screen grey.
- * Retail size is 0x8C000 (640x448 RGB5A3); the PC render mode copies
- * fbWidth x efbHeight = 640x480, so size it for that. */
+/* DOL .sdata 0x801988E0 points at fullscreen_texture_buf: the pause menu
+ * copies the frame there (take_pausemenu_screenshot) and draws it behind
+ * the menu.  Retail size is 0x8C000 (640x448 RGB5A3); the PC render mode
+ * copies fbWidth x efbHeight = 640x480. */
 static u8 fullscreen_texture_buf[640 * 480 * 2] __attribute__((aligned(32)));
 void *lbl_801988E0 = fullscreen_texture_buf;

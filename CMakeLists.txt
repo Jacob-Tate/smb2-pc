@@ -16,8 +16,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# Game integration: link the decompiled SMB2 code (requires 32-bit toolchain,
-# since the game code assumes 32-bit pointers)
+# Game integration: link the decompiled SMB2 code (i686 GCC, or x86_64 clang
+# for the __ptr32 fields: cmake/llvm-mingw64.cmake, docs/x64.md)
 option(SMB2_GAME "Link the decompiled game code" OFF)
 # Default: the decomp checkout next to this one (../decomp)
 get_filename_component(_smb2_default_decomp "${CMAKE_CURRENT_SOURCE_DIR}/../decomp" ABSOLUTE)
@@ -60,8 +60,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     # registers.  The GameCube rounds every op to double (fmul) or single
     # (fmuls), and game code depends on it: e.g. boat's race start tests
     # `frames == 0.1 * 60.0f`, which is exactly 6.0 in double but not in
-    # x87 extended precision, so the boats were never released.  SSE math
-    # rounds each op to its C type, like the PPC.
+    # x87 extended precision.  SSE math rounds each op to its C type, like
+    # the PPC.
     if(CMAKE_SIZEOF_VOID_P EQUAL 4 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86|i[3-6]86")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2 -mfpmath=sse")
     endif()
@@ -120,7 +120,6 @@ find_path(MINIAUDIO_INCLUDE_DIR miniaudio.h
 )
 
 if(NOT MINIAUDIO_INCLUDE_DIR)
-    # Download miniaudio if not present
     message(STATUS "miniaudio not found, will use embedded version")
     set(MINIAUDIO_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/third_party/miniaudio)
 endif()
@@ -271,8 +270,8 @@ if(SMB2_GAME)
     add_custom_target(smb2_text_incs DEPENDS ${SMB2_TEXT_INCS})
     add_library(smb2_game STATIC ${GAME_SOURCES})
     add_dependencies(smb2_game smb2_text_incs)
-    # Inventory aid for the 64-bit port: instead of -w, report only
-    # pointer<->int size-mismatch casts in the game TUs.  See docs/x64.md.
+    # Pointer-size audit: instead of -w, report only pointer<->int
+    # size-mismatch casts in the game TUs.  See docs/x64.md.
     option(SMB2_PTR_WARNINGS "Warn on pointer/int size-mismatch casts in game code" OFF)
     if(SMB2_PTR_WARNINGS)
         # (noisy: grep the log for the two warning tags)

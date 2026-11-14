@@ -1,28 +1,6 @@
-/* In-game updater, network/model side (docs/updater.md, include/pc_update.h).
- *
- *  - Version: -DSMB2_VERSION (CMake option, installer/build.sh --version),
- *    compared as semver (1.2.3 > 1.2.3-rc1 > 1.2.2; a leading v is ignored).
- *  - Source: GET https://api.github.com/repos/<SMB2_UPDATE_REPO>/releases/latest
- *    (drafts and pre-releases are never "latest").  User-Agent
- *    "SMB2-PC/<version>", no other identifiers, no cookies.  Empty repo =
- *    compiled in but disabled (the default).
- *  - Background thread (WinHTTP), short timeouts; offline and every other
- *    failure is only logged.  The automatic check runs at most once a day
- *    (settings.dat update_last), the Updates screen has "Check now".
- *  - Update (installed mode only): SHA256SUMS.txt of the same release first
- *    (refused without it), then SMB2_PC_Setup_<ver>.exe into
- *    %TEMP%\SMB2_update\ with a running SHA-256; on a match Setup is started
- *    with ShellExecuteEx ("/UPDATE /WAITPID=<pid>": Windows shows the admin
- *    prompt, Setup waits for this process to exit) and the UI quits the game
- *    through pc_quit (which waits for memory card jobs).
- *
- * Test hook (no GitHub needed):
- *   SMB2_UPDATE_TEST=<url of a releases/latest JSON>  e.g. http://127.0.0.1:8765/latest
- *       enables the updater even without a repo, in automated runs too, and
- *       ignores the once-a-day limit.
- *   SMB2_UPDATE_TEMP=<windows dir>   download folder instead of %TEMP%\SMB2_update
- *   SMB2_UPDATE_DRYRUN=1             log instead of starting Setup / the browser
- */
+/* In-game updater: release check, download and Setup launch (the UI is
+ * pc_update_ui.c).  Behaviour, test hooks and release procedure: see
+ * docs/updater.md. */
 #include "pc_update.h"
 #include "pc_settings.h"
 #include "install_mode.h"

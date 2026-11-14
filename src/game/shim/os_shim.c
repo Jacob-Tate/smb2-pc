@@ -68,7 +68,7 @@ static void tex_mem_freed(u32 start, u32 end)
 static int s_current_heap = -1;
 static int s_os_alloc_init;
 
-/* ---- SMB2_HEAP_CHECK=1: overflow guards (x64 bring-up, docs/x64.md) ----
+/* ---- SMB2_HEAP_CHECK=1: overflow guards (docs/x64.md) ----
  * Every allocation gets a 16-byte 0xFD guard after the requested size
  * rounded up to 32 (the GC allocator's granularity; bitmap.c relies on it),
  * followed by the caller's return address.  All live cells of all heaps (and
@@ -488,7 +488,7 @@ u32 *OSGetStackPointer(void) { return NULL; }
 int OSLink(void *module, void *bss) { (void)module; (void)bss; return 1; }
 int OSUnlink(void *module) { (void)module; return 1; }
 
-/* Fonts: used for the debug/ROM font; stub for now. */
+/* Fonts: only the debug/ROM font uses these; stubbed. */
 u16 OSGetFontEncode(void) { return 0; } /* ANSI */
 u32 OSInitFont(void *fontData) { (void)fontData; shim_log_once("OSInitFont"); return 0; }
 

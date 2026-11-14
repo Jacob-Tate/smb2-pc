@@ -1,5 +1,5 @@
 #!/bin/bash
-# Scripted-run test harness (docs/x64_work_packages.md).
+# Scripted-run test harness (docs/x64.md, Checklist for pointer-size changes).
 #
 #   modes.sh <label> <bindir> <mode...> [-- extra exe args]
 #       Runs each mode on the Windows host (cwd = bindir) and stores the
@@ -33,8 +33,8 @@
 # Setup (runs the Windows exe from WSL):
 #   SMB2_ISO      your disc image as a Windows path (required for runs)
 #   SMB2_X64_WS   workspace root holding pc_port/, runs/ and tools/
-#   SMB2_UPDATE_TEST / SMB2_UPDATE_TEMP / SMB2_UPDATE_DRYRUN  passed through (docs/updater.md)
 #                 (default: the directory containing this pc_port checkout)
+#   SMB2_UPDATE_TEST / SMB2_UPDATE_TEMP / SMB2_UPDATE_DRYRUN  passed through (docs/updater.md)
 #   $WS/tools/ppmtool           gcc -O2 -o $WS/tools/ppmtool pc_port/tools/ppmtool.c -lz
 #   $WS/tools/memcard_pristine  a memcard/ folder to start every run from
 #                               (e.g. an empty folder, or a copy of one with saves)
@@ -58,7 +58,7 @@ spec() {
     menus)     echo "0|1350:START,1450:START,1550:START|100|2101";;
     challenge) echo "1|600:START,1200:START,1800:A,2100:A,2400:A,2700:A,3000:A,3400:START,3500:DOWN,3560:DOWN,3620:A|200|4001";;
     # Challenge pause menu: Continue / View stage / How to play / Exit, so two
-    # DOWNs pick How to play (one DOWN was View stage); RIGHT pages through.
+    # DOWNs pick How to play; RIGHT pages through.
     howto|howto2) echo "1|600:START,1200:START,1800:A,2100:A,2400:A,2700:A,3000:A,3400:START,3500:DOWN,3560:DOWN,3620:A,3900:RIGHT,4100:RIGHT,4300:RIGHT,4500:RIGHT|100|4701";;
     # Party-game pause -> How to play. Race's pause menu is Continue /
     # Retry / How to play / Exit (two DOWNs); Bowling's has no Retry (one).
@@ -77,11 +77,10 @@ spec() {
     boat)      echo "1|$(mini 7)|200|3401";;
     dogfight)  echo "1|$(mini 8)|200|3401";;
     baseball)  echo "1|$(mini 9)|200|3401";;
-    # story: real menus (START skips the attract demo at 500, before the x64
-    # attract hang) -> Main Game -> Story Mode -> Data Select slot 1 -> Name
-    # Entry: A types "A", START jumps to END, A confirms -> the opening
-    # cutscene (scndat_SCENE1A + dlg/scn1a, mode 6, frames ~1680-7920) ->
-    # World 1 stage select.
+    # story: real menus (START at 500 skips the attract demo) -> Main Game ->
+    # Story Mode -> Data Select slot 1 -> Name Entry: A types "A", START jumps
+    # to END, A confirms -> the opening cutscene (scndat_SCENE1A + dlg/scn1a,
+    # mode 6, frames ~1680-7920) -> World 1 stage select.
     story)     echo "0|500:START,600:START,700:START,850:A,1050:A,1250:A,1450:A,1550:START,1650:A|200|8401";;
     memcard)   echo "0|1350:START,1450:START,1550:START,1700:A,1900:A,2100:A|100|2801";;
     # Quit to Desktop (pc_quit.c): the run must end by itself with

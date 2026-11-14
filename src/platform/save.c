@@ -1,4 +1,4 @@
-/* Save System Implementation */
+/* Standalone save format (save.h); not used by the game. */
 #include "save.h"
 #include "platform.h"
 #include <stdlib.h>
@@ -83,7 +83,6 @@ bool save_slot_read(int slot, SMB2SaveData* out_data) {
     if (out_data->version != SMB2_SAVE_VERSION) {
         fprintf(stderr, "Save slot %d: Version mismatch (%d vs %d)\n",
                 slot, out_data->version, SMB2_SAVE_VERSION);
-        /* Could attempt migration here */
         return false;
     }
 

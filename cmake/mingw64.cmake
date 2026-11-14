@@ -1,10 +1,8 @@
-# Toolchain for 64-bit Windows cross-build (x86_64-w64-mingw32).
+# Toolchain for 64-bit Windows cross-build with GCC (x86_64-w64-mingw32).
 #
-# The decompiled game code was written for 32-bit pointers.  The x64 game
-# build (SMB2_GAME=ON) therefore links the exe at a low fixed image base and
-# keeps all game memory (GC RAM emulation, exe statics) below 4 GiB, so
-# pointer values that the game stores in u32 fields still round-trip.  See
-# docs/x64.md for the full design.
+# Only for builds without the game (SMB2_GAME=OFF): GCC has no __ptr32, which
+# the disc-layout structs need on x64 (DPTR).  The x64 game build uses
+# cmake/llvm-mingw64.cmake; see docs/x64.md.
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
 

@@ -54,8 +54,8 @@ void AIInit(void *stack) { (void)stack; }
 void hwExit(void) { }
 
 /* Globals set by the skipped DOL init (g_init_console, asm 0x80006840):
- * the console refresh rate as int and float.  Zero stubs made
- * `x / lbl_80198B38` divide by zero (adv_demo fn_1_10FA8). */
+ * the console refresh rate as int and float (adv_demo fn_1_10FA8 divides
+ * by it). */
 int lbl_80198B38 = 60;
 float lbl_80198B34 = 60.0f;
 int lbl_80198B3C = 0;

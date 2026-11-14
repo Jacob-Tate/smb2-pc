@@ -1,23 +1,10 @@
 /* MusyX shim: the game's sound-library API (snd*) on top of the PC "DSP"
  * (include/audio_dsp.h, rendered by src/audio/audio_miniaudio.c).
  *
- * Everything the game can observe - stream update callbacks, voice
- * lifetimes (sndFXCheck), macro timing - is simulated here, on the game
- * thread, in fixed 5 ms ticks of *game* time (10 ticks per 3 video frames).
- * That keeps the game deterministic and independent of the audio device:
- * the worker thread only renders what it is told.
- *
- * Implemented:
- *  - sndStream*: DSP-ADPCM ring streams as driven by smgr.c (music, stream SE)
- *  - sndPushGroup/sndPopGroup: proj FX tables, pool SoundMacros, sdir/samp
- *    samples (decoded to PCM16 at push, since the game frees samp after)
- *  - sndFXStartParaInfo/KeyOff/Check/SetCtrl(14): a SoundMacro interpreter
- *    covering the opcodes this game's banks use for SFX
- *  - aux sends (MIDI ctrl 0x5B reverb -> aux A, 0x5D chorus -> aux B) with
- *    MusyX's send law; the effects themselves are musyx_fx.c
- * Not implemented (accepted and ignored): ADSR tables, vibrato, keymaps and
- * layers (minigame banks only), the surround output channel,
- * voice priorities/age, volume groups. */
+ * Everything the game can observe (stream callbacks, voice lifetimes, macro
+ * timing) is simulated here on the game thread, in fixed 5 ms ticks of game
+ * time, so it is deterministic and independent of the audio device.  What is
+ * and is not emulated: docs/audio.md. */
 #include "shim.h"
 #include "audio_dsp.h"
 #include <stdio.h>
@@ -323,7 +310,7 @@ void sndStreamDeactivate(u32 id)
  * synth frame (streamCallCnt/streamCallDelay = 3, set in streamInit), so the
  * update callbacks run at 50 Hz.  smgr.c counts those calls as its music
  * clock (1.2 * calls = 60 fps frames), which sel_ngc uses to cue the start
- * masks on the beat; calling every 5 ms ran that clock 4x fast. */
+ * masks on the beat. */
 static u8 s_streamCallCnt;
 #define STREAM_CALL_DELAY 3
 

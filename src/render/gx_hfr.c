@@ -1,35 +1,9 @@
-/* High frame rate rendering: record each 60 Hz tick's backend command stream
- * and replay it with interpolated transforms.  Design: docs/hfr.md.
- *
- * Recording: a GxGpu proxy forwards every call to the real backend and,
- * while a stream is open (hfr_tick_begin .. hfr_tick_end), appends the
- * replayable ones: viewport/scissor/blend/depth/cull/clear/bind/tex sampler
- * state, asynchronous EFB copies (copy_tex) and draws (vertices, quad rects,
- * GxDrawConsts copy, GxTevConsts copy per serial).  Texture uploads are not
- * replayed: the replay uses the textures as the tick left them.  Texture
- * destruction is deferred by two ticks so both kept streams stay valid.
- *
- * Matching (hfr_tick_end): each draw has a key (game-side identity tag from
- * pc_hfr_tag_push, primitive, vertex count, 2D flag, bound textures 0-2,
- * TEV/channel/texgen configuration).  Draws of one key pair in order when
- * that is consistent, else by nearest position (particles spawning / dying,
- * depth-sorted lists); leftovers pair through a looser key without textures
- * (flipbook animations) when they are very close.  A pair whose transform or
- * vertices jump is not interpolated; when the camera cuts (game hook, a
- * camera view jump, or most of the frame jumping) nothing is.
- *
- * Replay (hfr_render(alpha)): the frame is drawn from the previous tick's
- * stream for alpha < 0.5 and from the newest for alpha >= 0.5, every paired
- * draw with its matrices, CPU-transformed vertices, lights and colours
- * blended between the two ticks at alpha.  So continuous motion is
- * interpolated and discrete changes (objects appearing, a digit changing,
- * a camera cut) happen at the midpoint, for 3D and 2D alike - the HUD never
- * runs ahead of the scene.  Rigid transforms that turn more than a few
- * degrees per tick are interpolated as rotation (quaternion slerp) + scale +
- * translation instead of element-wise, so spinning objects keep their size.
- * EFB copies are re-executed on the GPU from the interpolated offscreen pass
- * (reflections, ripples, ...), except when the pass samples the copy's own
- * previous contents (feedback effects keep the tick's result). */
+/* High frame rate rendering: a GxGpu proxy records each 60 Hz tick's
+ * backend command stream (hfr_tick_begin .. hfr_tick_end), pairs the draws
+ * of the last two ticks (hfr_tick_end) and replays them with blended
+ * transforms, vertices and colours (hfr_render).  Texture uploads are not
+ * recorded: replays use the textures as the tick left them.
+ * Design: docs/hfr.md. */
 #include "gx_hfr.h"
 #include "perf.h"
 #include <stdlib.h>

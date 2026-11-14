@@ -6,9 +6,8 @@
  * their constant blocks and vertices).  Between two ticks the platform pacer
  * re-submits the recorded frames with their matrices, vertices, lights and
  * colours blended between the matching draws of the last two ticks, so
- * camera and object motion is shown at the display rate.  The frame rate
- * setting at 60 (the default) leaves every code path exactly as before: the
- * proxy is not used and nothing is recorded. */
+ * camera and object motion is shown at the display rate.  At the frame rate
+ * setting 60 (the default) the proxy is not used and nothing is recorded. */
 #ifndef GX_HFR_H
 #define GX_HFR_H
 

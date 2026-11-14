@@ -70,7 +70,7 @@ void pc_game_set_wide_mode(int wide) { modeCtrl.wideMode = wide ? 1 : 0; }
 #define GAME_ROWS 2
 #define QUIT_ROW (GAME_ROWS + PCS_ITEM_COUNT)
 #define ROW_COUNT (QUIT_ROW + 1)
-#define ROW_SPACING 22.0f   /* F1 overlay: 13 rows (Controllers, Updates added) */
+#define ROW_SPACING 22.0f   /* F1 overlay: 13 rows */
 /* the Options page has to fit 15 rows (2 game + 12 PC + Quit) above the
  * game's description box */
 #define PAGE_ROW_SPACING 19.0f
@@ -180,8 +180,8 @@ static void draw_list(const struct ListView *v)
     }
 
     /* the Quit to Desktop yes/no box replaces the rows while it is open.
-     * Drawn here, before the hint text: drawn as the overlay's very last
-     * thing its final glyph came out with the wrong texture. */
+     * Drawn before the hint text: as the overlay's very last draw, its final
+     * glyph gets the wrong texture. */
     pc_quit_confirm_draw(320.0f, 240.0f, 0.05f, 0.04f);
     set_ui_widescreen_scale_mtx(0x140);
     for (i = 0; i < (pc_quit_confirm_active() ? 0 : v->count); i++) {
@@ -307,7 +307,7 @@ void pc_screen_page_create(void)
     sprite = create_sprite();
     if (sprite != NULL) {
         sprite->x = 170.0f;
-        sprite->y = 86.0f;   /* 15 rows at 19 px end where 14 at 20 did */
+        sprite->y = 86.0f;   /* 15 rows at 19 px end above the description box */
         sprite->tag = 0x5D;
         sprite->drawFunc = page_draw;
         strcpy(sprite->text, "screen");

@@ -84,7 +84,7 @@ void show_resolution_picker(void) {
         if (g_platform.vtable && g_platform.vtable->set_fullscreen) {
             g_platform.vtable->set_fullscreen(&g_platform, fullscreen);
         }
-        /* Would need resize handling */
+        /* the window size is not applied (unused picker) */
     }
 }
 
@@ -300,8 +300,8 @@ int main(int argc, char* argv[]) {
     printf("DEBUG: platform_init returned\n");
     fflush(stdout);
 
-    /* Video settings live in game now (Options > Game Screen, or F1); no
-     * console resolution prompt.  show_resolution_picker() is unused. */
+    /* Video settings are in game (Options > Game Screen, F1);
+     * show_resolution_picker() is unused. */
     (void)show_resolution_picker;
 
     /* Locate the game data: --gamedata, --iso, install.ini gamedata,
@@ -433,8 +433,7 @@ int main(int argc, char* argv[]) {
         render_begin_frame();
 
         if (g_game_state == GAME_STATE_MAIN_MENU) {
-            /* Main menu rendering */
-            /* Would call game menu render functions */
+            /* standalone build: no menu to draw */
         } else if (g_game_state == GAME_STATE_GAMEPLAY) {
             game_main_loop();
         }

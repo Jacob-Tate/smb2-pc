@@ -21,8 +21,7 @@
 } while(0)
 
 /* For my_-prefixed pointers: ask the driver for the real GL name (#func + 3
- * skips "my_"). wglGetProcAddress returns NULL for unknown names; Mesa's
- * glXGetProcAddress returns a stub for anything, which hid this on Linux. */
+ * skips "my_"); wglGetProcAddress returns NULL for unknown names. */
 #define GL_LOAD_FUNC_MY(func, type) do { \
     void* _ptr = SDL_GL_GetProcAddress(#func + 3); \
     if (!_ptr) { \
@@ -132,15 +131,11 @@ static void load_gl_functions(void) {
 }
 
 /* ---- client-side GL state mirror + uniform cache ----
- *
- * The renderer used to query GL state (glIsEnabled / glGetIntegerv /
- * glGetBooleanv / glGetUniformLocation) inside the per-draw path.  With a
- * threaded GL driver (NVIDIA's default) every such query is a round trip
- * that drains the driver's command queue, so the CPU and the driver thread
- * ran in lock-step at a few microseconds per draw.  Everything below keeps
- * the answer on the client side instead.  This context is only touched by
- * this file (the platform layer only calls glReadPixels), so the mirror is
- * exact.  Unknown pnames / caps fall through to the real GL call. */
+ * With a threaded GL driver (NVIDIA's default) every glGet* / glIsEnabled
+ * query drains the driver's command queue, so the per-draw path never
+ * queries GL.  Only this file touches the context (the platform layer only
+ * calls glReadPixels), so the mirror is exact.  Unknown pnames / caps fall
+ * through to the real GL call. */
 #define ST_UNKNOWN (-1)
 static int s_st_cull = 0, s_st_dclamp = 0, s_st_scissor = 0; /* GL defaults */
 static int s_st_blend = 0, s_st_depth = 0, s_st_stencil = 0;
@@ -475,7 +470,7 @@ static const char* fragment_shader_source =
     "uniform int u_ui_tev;\n"
     "uniform int u_has_tex;\n"
     "out vec4 frag_color;\n"
-    /* 2D quad UV clamp (see gl_flush_batch): keep texcoord 0 inside the
+    /* 2D quad UV clamp (see gx_flush_batch): keep texcoord 0 inside the
      * quad's UV rect inset by half an EFB (640x480) pixel's footprint, i.e.
      * within the texels the GC's outermost pixel centres sampled. */
     "flat in vec4 v_uvrect;\n"
@@ -672,9 +667,8 @@ static const char* fragment_shader_source =
     "            frag_color = clamp(tex * u_tev_c0 + u_tev_c1, 0.0, 1.0);\n"
     /* GX alpha compare runs on the TEV output for every fragment; the 2D
      * sprite/text path relies on it (GREATER 0) so the transparent part of
-     * a glyph/sprite quad neither shows nor writes depth.  Without it,
-     * proportional glyph quads that overlap their neighbour wrote depth over
-     * it and (GX_LESS, same z) clipped the next glyph's left side. */
+     * a glyph/sprite quad neither shows nor writes depth (overlapping
+     * proportional glyphs would clip each other). */
     "            if (!gx_alpha_pass(floor(frag_color.a * 255.0 + 0.5))) discard;\n"
     "        } else\n"
     "            frag_color *= tex;\n"
@@ -698,23 +692,14 @@ static GLuint compile_shader(GLenum type, const char* source) {
     }
     return shader;
 }
-/* Streaming vertex upload.
+/* Streaming vertex upload.  Rewriting a buffer range a previous draw still
+ * reads makes the driver serialize the GPU, so batches go to successive
+ * ranges of a ring and are drawn with first/basevertex = their ring offset.
  *
- * Every batch used to be uploaded with glBufferSubData into offset 0 of the
- * VBO (and rect VBO) the previous draw was still reading.  The driver turns
- * each such update into a GPU-side copy that the next draw has to wait for,
- * which serialized the GPU at ~6 us per draw independent of resolution or
- * vertex count (measured: skipping just the upload took a 7500-draw attract
- * frame from 48 ms of swap wait to ~0).
- *
- * Fast path (GL_ARB_buffer_storage, any NVIDIA/AMD/Intel driver of the last
- * decade): one persistently mapped, coherent ring; batches are memcpy'd into
- * successive ranges and drawn with first/basevertex = their ring offset, so
- * no GL upload call happens per draw.  The ring is split into 4 quarters with
- * a fence each, so the CPU never overwrites vertices the GPU has not yet
- * consumed (in practice the fences are always signalled: a lap is several
- * frames).  Fallback: the same ring through glBufferSubData, orphaning both
- * buffers on wrap. */
+ * Fast path (GL_ARB_buffer_storage): the ring is persistently mapped and
+ * coherent, split into 4 quarters with a fence each so the CPU never
+ * overwrites vertices the GPU has not consumed yet.  Fallback: the same ring
+ * through glBufferSubData, orphaning both buffers on wrap. */
 typedef void (APIENTRYP RING_PFNDRAWELEMENTSBASEVERTEX)(GLenum, GLsizei, GLenum,
                                                         const void*, GLint);
 typedef void (APIENTRYP RING_PFNBUFFERSTORAGE)(GLenum, GLsizeiptr, const void*, GLbitfield);
@@ -805,7 +790,7 @@ static void ring_setup(GLBackend* gl) {
 static int ring_alloc(GLBackend* gl, int n) {
     int base;
     if (!s_ring_init) ring_setup(gl);
-    if (!s_glDrawElementsBaseVertex) return 0; /* old path: always offset 0 */
+    if (!s_glDrawElementsBaseVertex) return 0; /* no ring: always offset 0 */
     if (s_ring_vmap) {
         int qsize = s_ring_cap / RING_QUARTERS, q;
         if (s_ring_pos % qsize + n > qsize)        /* keep a batch in one quarter */
@@ -1667,8 +1652,7 @@ static void glb_restore(float brightness) {
  * loop) into an RGBA8UI target and, for copy_tex, the texels converted
  * through the copy format into the game texture (second colour output).
  * read_pixels_box reads the result back synchronously; copy_tex reads it into
- * a PBO with a fence and never waits.  The full-size glReadPixels + CPU
- * resample used to cost ~10 ms per copy at 1440p. */
+ * a PBO with a fence and never waits. */
 #ifndef GL_RGBA8UI
 #define GL_RGBA8UI 0x8D7C
 #endif
@@ -1820,11 +1804,10 @@ static int pc_box_target(GLuint* fbo, GLuint* tex, int* cw, int* ch, int w, int 
 }
 
 /* GL state the box passes touch.  No glGet* / glGetError here: with a
- * threaded driver each query drains the driver queue (measured 1.3-3.9 ms
- * per copy on NVIDIA).  Enables, viewport, colour mask, texture unit and
- * bindings come from the st_* mirror above; the program is the backend's
- * (bound at frame start), no VAO is bound between draws, and the default
- * framebuffer is bound outside these passes. */
+ * threaded driver each query drains the driver queue.  Enables, viewport,
+ * colour mask, texture unit and bindings come from the st_* mirror above;
+ * the program is the backend's (bound at frame start), no VAO is bound
+ * between draws, and the default framebuffer is bound outside these passes. */
 typedef struct {
     int unit;
     GLuint tex0;

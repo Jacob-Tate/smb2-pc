@@ -27,12 +27,9 @@ axes are at maximum: the "diagonal gate". Full tilt starts at about 78% of
 the stick's travel. Below that the curve is soft: half travel gives about
 0.35 of full tilt, and the centre has a dead zone of about 12%.
 
-Before this change, the PC port stubbed that function. It handed the game
-`SDL axis / 256` directly, so the game got linear values with no response
-curve and no dead zone. Full tilt came at 47% of the stick's travel. Any small
-sideways part of a "forward" push became a large sideways tilt: 10 degrees
-off forward gave 0.37 sideways tilt where a GC pad gives 0.08. That made
-forward running feel slower and sideways movement feel too drastic.
+Skipping this step (handing the game linear host values) would put full
+tilt at about half the stick's travel and turn a slightly off-axis "forward"
+push into a large sideways tilt, so the PC port reproduces it exactly.
 
 ## The PC pipeline (src/input/gc_stick.c, input_sdl2.c)
 
@@ -58,13 +55,13 @@ forward running feel slower and sideways movement feel too drastic.
 2. **The game's own processing.** It is an exact port of the loop above, with
    the DOL's tables. It runs at the end of `input_poll_gc_pads`, so the game
    and the PC overlays both see processed values. `lbl_80145210`,
-   `lbl_80081AC0` and `fn_8000A380` are now real, which makes the game's
-   Control Stick adjustment work too.
+   `lbl_80081AC0` and `fn_8000A380` are real data/code on PC, so the game's
+   Control Stick adjustment works too.
 
 The keyboard (WASD) gives a full octagon deflection: 101 at the cardinals and
 (71, 71) at the diagonals.
 
-Triggers are unchanged. They already carried the processed value (0..0x8C).
+Triggers bypass this: they carry the processed value (0..0x8C) directly.
 
 ## Settings: controllers.ini (save directory)
 
@@ -123,28 +120,12 @@ change.
 
 Unit test: `tools/stick_test/stick_test.c`.
 
-## Verification (2026-11-13)
+## What the tests check
 
-`tools/stick_test` reports 193 checks, 0 failed. It checks the following
-against Dolphin's octagon and MapFloat: the main stick reaches 101 at the
-cardinals and (71, 71) at the diagonals, and the C stick 92 and (65, 65). It
-also covers 3600 edge angles of both sticks (within 1 unit), monotonicity, no
-clamping, the dead zone, calibration of a squircle-shaped stick, and the game
-values (60 at full deflection on every driven axis, curve lookups).
-
-All in-game runs are Challenge Beginner 1, holding the stick from frame 2200
-to 2500, with `SMB2_BALL_LOG`.
-
-* **Full deflection forward / diagonal / sideways.** The new mapping, the raw
-  Dolphin-equivalent values (SY101, SX71/SY71, SX101) and the old mapping give
-  identical trajectories. All of them saturate, so top speed was never the
-  bug.
-* **Half forward.** The old mapping gives full speed (0.262 at +120 frames).
-  The new one gives 0.094. Dolphin agrees with the new mapping.
-* **10 degrees off forward.** The old mapping drives the ball into the side
-  wall: x reaches 5.1, and progress is 4.5 units behind by +120 frames. The
-  new mapping's sideways tilt is 5/60.
-* **Dolphin, DSU stick byte 176.** This gives GC raw value 38. The HUD speed
-  at TIME 59.70 down to 52.70 reads 11 6 8 10 10 11 11 11 mph, identical to
-  the PC with SY38.
-* **x64 build.** The ball trajectories are identical to the 32-bit build.
+`tools/stick_test` checks stage 1 against Dolphin's octagon and MapFloat
+(101 / (71, 71) for the main stick, 92 / (65, 65) for the C stick, every edge
+angle within 1 unit), monotonicity, no clamping, the dead zone, calibration
+of a squircle-shaped stick, and stage 2's game values (60 at full deflection
+on every driven axis, curve lookups). In game, `SMB2_BALL_LOG` with the
+`SYn` / `SXn` tokens gives ball trajectories that can be compared with
+Dolphin fed the same raw values over DSU (`tools/stick_test/dsu_server.py`).

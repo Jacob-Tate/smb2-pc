@@ -5,7 +5,7 @@ void shim_log_once(const char *sym);
  * them as pointer-bearing types, which are up to 2x larger on x64. */
 #define PC_STUB_SCALE (sizeof(void *) / 4)
 
-/* FONT_DEFINITIONS now lives in font_defs_gen.c (real DOL table data). */
+/* FONT_DEFINITIONS is defined in font_defs_gen.c (DOL table data). */
 int GXCallDisplayList() { shim_log_once("GXCallDisplayList"); return 0; }
 int GXClearVtxDesc() { shim_log_once("GXClearVtxDesc"); return 0; }
 int GXDrawSphere() { shim_log_once("GXDrawSphere"); return 0; }
@@ -270,4 +270,4 @@ int set_free_to_heap_func_ptr() { shim_log_once("set_free_to_heap_func_ptr"); re
 unsigned char worm_surface_gma_model[32 * PC_STUB_SCALE] __attribute__((aligned(32)));
 unsigned char wormhole_gma_model[32 * PC_STUB_SCALE] __attribute__((aligned(32)));
 /* sel_ngc_option DOL refs (sizes from symbols.txt); lbl_80145210, lbl_80081AC0
- * and fn_8000A380 are real now (src/input/input_sdl2.c, docs/stick.md) */
+ * and fn_8000A380 are defined in src/input/input_sdl2.c (docs/stick.md) */

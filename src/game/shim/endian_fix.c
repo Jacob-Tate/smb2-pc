@@ -1,9 +1,6 @@
-/* Byte-swap helpers for big-endian disc data.
- *
- * The decomp code reads file data through native loads (it ran on a
- * big-endian CPU).  On x86 each file format's header fields must be
- * swapped in place right after loading, at guarded (#ifndef __MWERKS__)
- * hook points inside the decomp loaders. */
+/* Byte-swap helpers for big-endian disc data, called from guarded
+ * (#ifndef __MWERKS__) hook points in the decomp loaders right after a file
+ * is loaded.  See docs/endian.md. */
 #include "shim.h"
 #include <stdio.h>
 #include <string.h>
@@ -121,12 +118,12 @@ void pc_swap_nlobj(void *data)
  * "already relocated" flag, so this must run before relocation and be
  * idempotent across repeated calls on the same archive.
  *
- * Heuristic: once relocated, the top bit is set (host-endian) and we
- * bail; an unswapped BE count for these small tables looks huge after a
- * native LE read, so "count too big but plausible after bswap" = BE.
+ * Once relocated, the top bit is set (host-endian).  An unswapped BE count
+ * for these small tables looks huge when read little-endian, so "too big,
+ * but plausible after bswap" means BE.
  *
- * NOTE: this swaps only the offset table.  The entry payloads (Mta
- * clips/keys, Skl bone data) still need their own parse-time swaps. */
+ * Only the offset table is swapped here; the entry payloads have their own
+ * swaps below. */
 void pc_swap_ape_archive(void *archive)
 {
     u32 *p = (u32 *)archive;
@@ -811,14 +808,11 @@ static void sd_traverse(struct StageDef *sd)
         struct StartPos *sp = sd_ptr(&sd->startPos);
 
         if (sp != NULL) {
-            /* Monkey Race stages carry one start position per
-             * racer (9 entries, STAGE133-138: 8 players + 1); the count is
-             * the low byte of the 0x6C header word (0x20202009; 0x..01 for
-             * ordinary stages).  race2 fn_10_488 indexes startPos[pc-id-1],
-             * so only entry 0 being swapped dropped the other racers at
-             * garbage (~0,0,0) positions off the course -> they fell
-             * through "the track" and respawned.  Bound the count by the
-             * falloutY block, which directly follows the array. */
+            /* Monkey Race stages (STAGE133-138) carry one start position
+             * per racer (9 entries: 8 players + 1; race2 fn_10_488 indexes
+             * startPos[pc-id-1]).  The count is the low byte of the 0x6C
+             * header word (0x20202009; 0x..01 for ordinary stages), bounded
+             * by the falloutY block that directly follows the array. */
             s32 cnt = sd->unk6C[3];
             float *fy = sd_ptr(&sd->falloutY);
 

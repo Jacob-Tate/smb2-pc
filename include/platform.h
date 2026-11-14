@@ -149,9 +149,8 @@ bool platform_resolve_game_data(const char* gamedata_arg, const char* iso_arg);
 bool platform_recover_gamedata(const char* why); /* installed: re-extract per user */
 void platform_apply_window_icon(void);       /* icon from the disc in use */
 
-/* Save file system (GameCube memory card compatible) */
-/* Memory card: 59 blocks × 8192 bytes = ~483KB per card */
-/* SMB2 uses 1 save file per game (slot A/B/C) */
+/* Save files of the standalone save format (save.c); the game's memory
+ * card is card_shim.c. */
 
 #define MEMCARD_BLOCK_SIZE    8192
 #define MEMCARD_MAX_BLOCKS    59

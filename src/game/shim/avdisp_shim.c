@@ -12,30 +12,20 @@
  *   avdisp_set_post_mult_color / avdisp_set_post_add_color
  *   load_gx_pos_nrm_mtx         0x80066900  (XF pos+nrm matrix upload)
  *
- * SMB1's matched C (ref/smb-decomp/src/avdisp.c) was used as the reference
- * for everything the two games share; differences were taken from the SMB2
- * asm (noted inline).
+ * SMB1's matched C (ref/smb-decomp/src/avdisp.c) is the reference for
+ * everything the two games share; SMB2 differences come from the asm and
+ * are noted inline.
  *
- * The GC game draws shapes by DMA-ing pre-built big-endian GX FIFO display
- * lists (GXCallDisplayList).  The PC port has no FIFO, so parse_disp_list()
- * below interprets the stream and replays it through the immediate-mode
- * GXBegin/GXPosition3f32/... API that the GL backend implements.  The
- * display-list bytes are NOT byte-swapped at load (see endian_gma.c), so
- * all multi-byte reads here are explicit big-endian decodes.
+ * GC draws shapes by calling pre-built big-endian GX display lists.  There
+ * is no FIFO on PC, so parse_disp_list() interprets the stream and replays
+ * it through the immediate-mode GXBegin/GXPosition3f32/... API.  Display
+ * lists are not byte-swapped at load (endian_gma.c), so all multi-byte
+ * reads here are explicit big-endian decodes.
  *
- Materials are built as GX lighting channels + TEV stages (port of SMB1
- * build_tev_material, see the TEV material section), drawn by the GL
- * backend's GXFX emulation.  Deliberate simplifications:
- *  - layers sourced from the TEX1/TEX2 UV sets reuse TEX0 (the backend
- *    has a single texcoord attribute); TEV swap tables are not emulated
- *  - STITCHING models: per-vertex matrix indices are consumed but ignored
- *    (the backend draws a whole batch with one current matrix), so they
- *    render rigidly with the current matrix
- *  - SKIN/EFFECTIVE (deformable) models are drawn (CPU skinning included);
- *    the GC display-list record/replay hint bits (model->flags 0x20/0x40)
- *    are ignored (no FIFO to cache), the strips are just re-emitted
- *  - GXInitTexObjLOD maps to GL filter/LOD/anisotropy on the backend's
- *    own mip chain
+ * Materials are GX lighting channels + TEV stages (port of SMB1
+ * build_tev_material), drawn by the backend's GXFX emulation.  The GC
+ * display-list record/replay hint bits (model->flags 0x20/0x40) are
+ * ignored: strips are re-emitted on every draw.
  */
 #include <math.h>
 #include <stdio.h>
@@ -79,11 +69,8 @@ void OSReport(const char *fmt, ...);
 #define CULL_BACK  2
 
 /* The 0x20-byte GMA TEV layer (ref smb-decomp gma.h GMATevLayer; the SMB2
- * decomp has no struct for it yet).  Offsets verified against the asm:
- * g_init_gma_model_materials stores the texObj at +0x08 ("stw rX, 0x8")
- * and the draw path reads it back from +0x08 before GXLoadTexObj_cached;
- * g_init_gma_texture stores the raw image-data pointer at +0x14
- * ("stw r29, 0x14(r31)"). */
+ * decomp has no struct for it).  Offsets from the asm: texObj at +0x08
+ * (g_init_gma_model_materials), image data at +0x14 (g_init_gma_texture). */
 struct GMATevLayer
 {
     /*0x00*/ u32 flags;
@@ -92,12 +79,9 @@ struct GMATevLayer
     /*0x07*/ u8 maxAniso;
     /*0x08*/ GXTexObj * DPTR texObj;  /* 4-byte slot on x64 */
     /*0x0C*/ u8 fillerC[0x10 - 0x0C];
-    /*0x10*/ u8 blendMode[4];      /* big-endian u32 as stored in the GMA
-                                    * (not byte-swapped on load): the
-                                    * diffuse layer reads it with lwz and
-                                    * uses bits 0-3 (byte 0x13 low nibble)
-                                    * as the TEV color combine mode and
-                                    * bits 4-7 as the alpha mode */
+    /*0x10*/ u8 blendMode[4];      /* big-endian u32, not swapped on load:
+                                    * bits 0-3 (byte 0x13 low nibble) TEV
+                                    * color mode, bits 4-7 alpha mode */
     /*0x14*/ void * DPTR imageData;      /* tpl->fileData + imageOffset */
     /*0x18*/ u8 filler18[0x20 - 0x18];
 };  /* size = 0x20 */
@@ -184,9 +168,8 @@ void avdisp_set_post_add_color(float r, float g, float b, float a)
  * per-bone u16 from the skin stream.  pointer_range_advance (0x8006982C)
  * points the table at a caller-provided contiguous Mtx array (ape.c passes
  * its posed bone matrices), draw_poly (0x8006977C) at the model's own
- * stitching matrices.  On PC both the pool and the table are static
- * (fn_80069578's OSGetArenaHi / heap split is pointless here), and unset
- * slots fall back to identity instead of GC's uninitialized memory. */
+ * stitching matrices.  On PC both the pool and the table are static, and
+ * unset slots fall back to identity instead of GC's uninitialized memory. */
 
 #define AVDISP_MTX_SLOTS 256            /* model->mtxCount is a u8 */
 
@@ -273,10 +256,10 @@ void g_free_some_memory(void)
  * mtxIndices[k] != 0xFF binds transformMtx[idx] to GX matrix slot k+1
  * (slot 0 keeps the base mtxA that load_gx_pos_nrm_mtx(mtx, 0) set).  The
  * display list's per-vertex GX_VA_PNMTXIDX byte (GX matrix id = slot*3)
- * then picks the slot per vertex.  The GL backend draws a whole batch with
- * ONE modelview, so parse_disp_list instead CPU-transforms stitched
- * vertices by the shadowed slot matrix (into view space, like the GC XF
- * unit) and draws the batch with an identity modelview. */
+ * then picks the slot per vertex.  The backend draws a batch with one
+ * modelview, so parse_disp_list CPU-transforms stitched vertices by the
+ * shadowed slot matrix into view space (as the GC XF unit does) and draws
+ * the batch with an identity modelview. */
 
 static float s_transform_mtx[AVDISP_MTX_SLOTS][12];  /* u_transformMtxList */
 
@@ -616,7 +599,7 @@ static void parse_disp_list(const u8 *dl, u32 size, u32 vtxAttrs,
         p += 2;
         s16fmt = (fmt == 1);        /* GX_VTXFMT1 = compressed 16-bit */
 
-        /* the GL backend takes the raw GC primitive opcode (0x80 quads,
+        /* the backend takes the raw GC primitive opcode (0x80 quads,
          * 0x90 tris, 0x98 strip, 0xA0 fan, ...) as GXBegin's first arg */
         GXBegin((int)prim, (int)fmt, (u16)count);
         for (v = 0; v < count && p < end; v++) {
@@ -738,10 +721,8 @@ void g_something_with_texture_scroll_3(int id, Mtx mtx)
     s_custom_tex_mtx_on = 1;
 }
 
-/* GC GXBlendFactor -> pc_port render.h blend factor.  -1 = unmappable
- * (ZERO/SRCCLR/INVSRCCLR); the backend then falls to its defaults. */
-/* GMA blendFactors hold real GC GX_BL_* values, and render.h now uses the
- * same numbering, so they pass through unchanged. */
+/* GMA blendFactors hold GC GX_BL_* values; render.h uses the same
+ * numbering. */
 static int map_blend_factor(u32 gc)
 {
     return (int)(gc & 0xF);
@@ -782,9 +763,7 @@ static u8 unit_to_u8(float f)
  *    ball_draw.c fn_1_4D82C) appends/patches stages via TevStageInfo
  *  - post multiply (K2) / post add (K3) stages
  *  - alpha blend layers take the alpha from a texture colour channel
- *    through the TEV swap tables (as fn_8006877C does)
- * Not emulated: second/third UV sets (the backend has one texcoord
- * attribute, so TEX1/TEX2-sourced layers reuse TEX0). */
+ *    through the TEV swap tables (as fn_8006877C does) */
 #define TEV_LAYER_VIEW_SPECULAR  (1u << 0)
 #define TEV_LAYER_TYPE3          (1u << 1)
 #define TEV_LAYER_ALPHA_BLEND    (1u << 13)
@@ -1056,8 +1035,8 @@ static void build_tev_material(struct GMAModel *model, struct GMAShape *shape)
         if (vc) {
             GXSetChanCtrl(4 /* GX_COLOR0A0 */, 0, 1, 1, 0, 0, 2);
         } else {
-            /* (before the other GXFX setters: GXSetTevColor also toggles
-             * the backend's 2D UI TEV mode, which they then clear) */
+            /* before the other GXFX setters: GXSetTevColor also toggles
+             * the backend's 2D UI TEV mode, which they then clear */
             GXSetTevColor(1 /* GX_TEVREG0 */, mat);
             colorIn = 2;                            /* GX_CC_C0 */
             alphaIn = 1;                            /* GX_CA_A0 */
@@ -1151,9 +1130,7 @@ static void build_tev_material(struct GMAModel *model, struct GMAShape *shape)
                  * to a grey intensity, 0x80 (half) by default or the
                  * layer's byte +0x0C when the layer has flag 0x100000; not
                  * the shape's specular colour (that is SMB1, and SMB2's
-                 * world-specular layer below).  Using the shape colour
-                 * (black -> white) made sphere-mapped shiny objects twice
-                 * too bright, e.g. the HOPPERS flippers (2-3). */
+                 * world-specular layer below). */
                 u8 ki = (layer->flags & 0x100000u) ? layer->fillerC[0] : 0x80;
                 GXColor k;
 
@@ -1281,11 +1258,9 @@ static int bind_shape_material(struct GMAModel *model, struct GMAShape *shape,
      * textures/blend (shadow casters and receivers, ...) and the GMA
      * material setup is skipped.  Checked before gx_ui_tev_disable, which
      * would reset that caller-built GX TEV state.  Only honoured while the
-     * GXFX TEV emulation is active (the caller's setup is then drawable). */
-    /* asm 0x80069F14 passes r3 = sp+8 = {+4 shape, +8 the
-     * model's TEV layer array (model+0x40)}; callbacks like polydisp
-     * fn_1_993C (mirror pass) dereference it.  Calling with no argument
-     * read stack garbage -> crash (read of 0x12 = shape->layerCount). */
+     * GXFX TEV emulation is active (the caller's setup is then drawable).
+     * The argument is the asm's sp+8 block {+4 shape, +8 the model's TEV
+     * layers}; callbacks such as polydisp fn_1_993C dereference it. */
     struct { u32 unk0; struct GMAShape *shape; void *layers; } cbArg;
     cbArg.unk0 = 0;
     cbArg.shape = shape;
@@ -1319,10 +1294,8 @@ static int bind_shape_material(struct GMAModel *model, struct GMAShape *shape,
      * init_tev_material_cache loads TEXMTX1 (identity unless a custom tex
      * mtx is enabled) and build_diffuse_layer uses
      * GXSetTexCoordGen(id, MTX2x4, TEX0, GX_TEXMTX1); SMB2 uses GX_TEXMTX2
-     * for it (asm 0x8006757C).  Without this a draw
-     * inherits whatever texgen/texmtx the previous draw left (e.g. a shadow
-     * projection in TEXMTX0), so UVs land far outside the texture and
-     * clamp-sample one edge texel (black bananas). */
+     * for it (asm 0x8006757C).  Set explicitly so a draw doesn't inherit
+     * the previous draw's texgen/texmtx (e.g. a shadow projection). */
     {
         extern void GXLoadTexMtxImm(const Mtx mtx, int id, int type);
         extern void GXSetTexCoordGen(int dst, int func, int src, int mtx);
@@ -1403,7 +1376,7 @@ static struct GMAShape *draw_shape(struct GMAModel *model,
                     col.useVtxColor, textured, (unsigned)shape->dispListFlags,
                     (unsigned)shape->dispListSizes[0], (unsigned)shape->dispListSizes[1],
                     (unsigned)shape->blendFactors);
-        if (g_mtx_trace > 0) { /* TEMP nl: tev layer flags */
+        if (g_mtx_trace > 0) { /* trace: tev layer flags */
             struct GMATevLayer *tl = (struct GMATevLayer *)((u8 *)model + 0x40);
             int li;
             fprintf(stderr, "[trace]  layers n=%d", shape->tevLayerCount);
@@ -1692,7 +1665,7 @@ static void draw_model(struct GMAModel *model, int drawOpaque,
                     (void *)model, (unsigned)model->flags, (unsigned)model->opaqueShapeCount,
                     (unsigned)model->translucentShapeCount, s_custom_material_cb_peek(),
                     (unsigned)s_avdisp_flag_peek());
-        if (g_mtx_trace > 0) { /* TEMP nl: model name lookup */
+        if (g_mtx_trace > 0) { /* trace: model name lookup */
             extern struct GMA *init_common_gma, *stage_gma, *g_bg_gma;
             struct GMA *gl3[3] = { init_common_gma, stage_gma, g_bg_gma };
             int gi; u32 mi;
@@ -1714,9 +1687,9 @@ static void draw_model(struct GMAModel *model, int drawOpaque,
         u8 *ph = (u8 *)model + model->headerSize;
 
         /* asm now1 0x80069B58: CPU-skin unless flag 0x40 says the cached
-         * display list already holds the result (never set on PC, kept
-         * for fidelity).  16-bit guard added: the skinning writes f32s,
-         * so a (nonexistent in practice) SKIN+16BIT model must not run. */
+         * display list already holds the result (never set on PC).  The
+         * skinning writes f32s, so skip SKIN+16BIT models (not in the
+         * game data, PC-only guard). */
         if ((model->flags & GCMF_SKIN) && !(model->flags & 0x40) &&
             !(model->flags & GCMF_16BIT))
             skin_transform(ph);
@@ -1784,8 +1757,7 @@ void g_avdisp_draw_model_now3(struct GMAModel *model)  /* translucent only */
 /* ---- load_gx_pos_nrm_mtx (asm 0x80066900) ----------------------------
  * GC: writes mtx as XF position matrix id*12 and normal matrix id*9, i.e.
  * GC matrix slot GX_PNMTX0 + id*3.  The decomp calls it before every
- * avdisp draw (avdisp_wrap.c: load_gx_pos_nrm_mtx(mtxa->mtxA, 0)), so
- * without it every model renders with a stale modelview matrix. */
+ * avdisp draw (avdisp_wrap.c: load_gx_pos_nrm_mtx(mtxa->mtxA, 0)). */
 void load_gx_pos_nrm_mtx(Mtx mtx, int id)
 {
     GXLoadPosMtxImm(mtx, id * 3);
@@ -1800,10 +1772,7 @@ void load_gx_pos_nrm_mtx(Mtx mtx, int id)
     }
 }
 
-/* ---- small avdisp state (asm 0x80066A58/0x80069860/0x80069AC0/0x80069AD0) --
- * Pure setters for globals the asm draw path consumed.  Our C draw path
- * does not honor them yet (custom-material callback, draw mode), so models
- * that use them just render with default materials. */
+/* ---- small avdisp state (asm 0x80066A58/0x80069860/0x80069AC0/0x80069AD0) -- */
 
 /* lbl_80199320: swap-and-return-old flag (read by asm material path) */
 static u32 s_avdisp_flag_320;
@@ -1818,8 +1787,7 @@ u32 fn_80066A58(u32 v)
 void fn_80069860(float f) { s_materialAlpha = f; }
 
 /* lbl_80199370: custom material callback, called instead of the default
- * tex-material setup when non-NULL (asm draw_model_now1 0x80069F14).
- * Stored so a later draw-path upgrade can honor it. */
+ * tex-material setup when non-NULL (asm draw_model_now1 0x80069F14). */
 void *fn_80069AC0(void *cb)
 {
     void *old = s_custom_material_cb;

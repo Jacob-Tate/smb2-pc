@@ -85,39 +85,38 @@ Both definitions reach only `pc_update.c`, so changing them rebuilds one file.
 
 ## Settings placement
 
-The Options > Game Screen page already had 14 rows (2 game rows, 11 PC rows,
-Quit to Desktop). The updater adds **one** row, "Updates", after
+Options > Game Screen has one row for the updater, **Updates**, after
 "Controllers": its value shows the automatic check (On/Off) and A opens the
 **Updates screen** (version, installed/portable, repo, "Check automatically"
-On/Off, "Check now", Back, status of the last check). This keeps "Check now",
-the version and the status off the crowded page; the page's row pitch went
-from 20 to 19 px so 15 rows still fit above the description box. The F1
-overlay gets the same row (pitch 24 to 22 px for 13 rows) and shows the
-version at the top right. Script token `UPD` opens the Updates screen.
+On/Off, "Check now", Back, status of the last check). The page uses a 19 px
+row pitch so its 15 rows (2 game rows, 12 PC rows, Quit to Desktop) fit above
+the description box. The F1 overlay has the same row (22 px pitch, 13 rows)
+and shows the version at the top right. Script token `UPD` opens the Updates
+screen.
 
 settings.dat keys: `update_check=1`, `update_last=<unix time>`,
 `update_skip=<version>`.
 
 ## Setup on top of an existing install
 
-A normal Setup run on an installed copy already upgrades in place: the folder
-comes from the uninstall key (directory page skipped), `assets\` is replaced,
-the exe/README/license/install.ini are rewritten, verified game data in
+A normal Setup run on an installed copy upgrades in place: the folder comes
+from the uninstall key (directory page skipped), `assets\` is replaced, the
+exe/README/license/install.ini are rewritten, verified game data in
 `$INSTDIR\gamedata` is kept ("Keep the existing game data"), and the per-user
 data in `%APPDATA%\SMB2\installed` (saves, settings, shader cache, logs) is
-never touched. It still showed Welcome, License, Components and the disc
-image page and ended on the Finish page.
+never touched. Interactively it still shows Welcome, License, Components and
+the disc image page and ends on the Finish page.
 
-New switches (installer/smb2.nsi):
+Switches used by the updater (installer/smb2.nsi):
 
 - `/WAITPID=<pid>`: first waits (max 60 s) for that process to exit, so the
   game's exe is not locked.
 - `/UPDATE` (only when an install exists, otherwise ignored): skips Welcome,
   License, Components and the disc image page (keeps verified game data; if
-  there is none, the game asks for the disc as before), keeps the desktop
-  shortcut only if it exists, closes the progress page automatically and starts
-  the game (through Explorer, as the normal user) instead of showing the Finish
-  page. With `/S` it starts the game after a successful silent update.
+  there is none, the game asks for the disc), keeps the desktop shortcut only
+  if it exists, closes the progress page automatically and starts the game
+  (through Explorer, as the normal user) instead of showing the Finish page.
+  With `/S` it starts the game after a successful silent update.
 
 ## Release procedure
 

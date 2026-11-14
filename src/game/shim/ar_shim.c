@@ -1,9 +1,9 @@
 /* ARAM + ARC shim.
  *
  * ARAM: the GameCube's 16MB auxiliary RAM, used by SMB2 as a disc file cache
- * and by the sound system.  We back it with a host allocation; ARAM addresses
- * are plain offsets into the block.  ARQ transfers become memcpy with the
- * callback fired immediately.
+ * and by the sound system.  Here it is a host allocation and ARAM addresses
+ * are offsets into it.  ARQ transfers are a memcpy with the callback fired
+ * immediately.
  *
  * ARC: the SDK's in-memory archive reader (.arc files, magic 0x55AA382D).
  * The game's ArcHandle (0x1C) and ArcFile (0xC) are the SDK layouts. */

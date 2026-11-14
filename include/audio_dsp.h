@@ -1,16 +1,11 @@
-/* audio_dsp.h - the "DSP" half of the PC audio path.
+/* audio_dsp.h - the "DSP" half of the PC audio path (docs/audio.md).
  *
- * The game-thread MusyX emulation (src/game/shim/musyx_shim.c) is the
- * deterministic "synth": it runs the game's sound API, SoundMacros and the
- * stream bookkeeping in fixed 5 ms ticks of game time.  Everything it wants
- * to *hear* goes through this command interface into a lock-free SPSC
- * queue.  A worker thread (src/audio/audio_miniaudio.c) consumes the
- * commands in order, renders exactly ADSP_TICK_FRAMES output frames per
- * tick, and pushes them to the miniaudio device FIFO (and an optional WAV
- * file).  The game thread never blocks on audio: if the queue is full a
- * command is dropped and counted.
+ * The game-thread MusyX synth (musyx_shim.c) sends commands through this
+ * interface into a lock-free SPSC queue; the worker in audio_miniaudio.c
+ * runs them in order and renders ADSP_TICK_FRAMES frames per tick.  The game
+ * thread never blocks: a command that does not fit is dropped and counted.
  *
- * Plain C types only - included by both the game shim and the exe side. */
+ * Plain C types only: included by both the game shim and the exe side. */
 #ifndef AUDIO_DSP_H
 #define AUDIO_DSP_H
 
