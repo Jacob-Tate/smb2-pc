@@ -1,0 +1,21 @@
+# build trees (build/, build32/, build64/, build_windows/, ...)
+build/
+build*/
+out/
+runs/
+scratch/
+# local dependencies (see README.md)
+/mingw_deps
+/third_party/SDL2-*
+/toolchains
+# frame dumps, logs and other run output
+*.ppm
+frame_*.png
+*.log
+# misc
+*.orig
+__pycache__/
+*.pyc
+.vscode/
+.vs/
+.idea/
