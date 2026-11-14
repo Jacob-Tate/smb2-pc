@@ -23,6 +23,10 @@
 ;   /ARCH=x86|x64           force the exe flavour (x64 only on 64-bit Windows)
 ;   /D=<dir>                install directory (must be last, no quotes)
 ;   /TESTNORENAME           (TESTMODE only) migrate old game data by copy+verify, as across drives
+;   /UPDATE                 in-game updater run (docs/updater.md): on an existing install, skip the
+;                           welcome/license/components/disc pages (keep the folder, the game data and
+;                           the desktop shortcut choice), close after installing and start the game
+;   /WAITPID=<pid>          first wait (up to 60 s) for that process (the game that started Setup) to exit
 ;
 ; Layout: program + extracted game data in $INSTDIR (gamedata\ = $INSTDIR\gamedata,
 ; install.ini gamedata=gamedata, relative to the exe folder); saves etc. in %APPDATA%.
@@ -131,6 +135,7 @@ VIAddVersionKey "LegalCopyright" "CC0 1.0 (see LICENSE.txt); no game content inc
 ; ---------------------------------------------------------------- variables
 Var Use64            ; 1 = install the x86_64 exe
 Var IsUpgrade
+Var UpdateMode       ; 1 = /UPDATE on an existing install (in-game updater)
 !ifdef TESTMODE
 Var TestRoot
 !endif
@@ -192,9 +197,11 @@ Var ExSkip
 
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${APPNAME} ${VERSION} Setup"
 !define MUI_WELCOMEPAGE_TEXT "This installs ${APPNAME}, an unofficial, non-commercial PC port of Super Monkey Ball 2 for the GameCube.$\r$\n$\r$\nNo game content is included. You need your own Super Monkey Ball 2 GameCube disc image (USA version, disc ID GM2E8P, .iso or .gcm) made from a disc you own. Setup extracts the game data from it (about 1 GB). You can also skip that step and choose the disc image later in the game.$\r$\n$\r$\nClick Next to continue."
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipInUpdateMode
 !insertmacro MUI_PAGE_WELCOME
 
 !define MUI_LICENSEPAGE_TEXT_TOP "License, credits and third-party notices:"
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipInUpdateMode
 !insertmacro MUI_PAGE_LICENSE "LICENSE.txt"
 
 !define MUI_PAGE_CUSTOMFUNCTION_PRE DirPagePre
@@ -205,6 +212,7 @@ Var ExSkip
 !insertmacro MUI_PAGE_DIRECTORY
 
 !define MUI_COMPONENTSPAGE_NODESC
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipInUpdateMode
 !insertmacro MUI_PAGE_COMPONENTS
 
 Page custom IsoPageCreate IsoPageLeave
@@ -220,6 +228,7 @@ Page custom ExtractPageCreate ExtractPageLeave
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Show README"
 !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION ShowReadme
+!define MUI_PAGE_CUSTOMFUNCTION_PRE FinishPagePre
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow
 !insertmacro MUI_PAGE_FINISH
 
@@ -407,6 +416,18 @@ Function .onInit
   !insertmacro CheckAdmin
 
   ${GetParameters} $R0
+  ; started by the in-game updater: wait until the game has exited (it
+  ; quits right after starting Setup, once its memory card saves are done)
+  ClearErrors
+  ${GetOptions} $R0 "/WAITPID=" $R1
+  ${IfNot} ${Errors}
+  ${AndIf} $R1 != ""
+    System::Call 'kernel32::OpenProcess(i 0x00100000, i 0, i $R1) p .r2'
+    ${If} $2 P<> 0
+      System::Call 'kernel32::WaitForSingleObject(p r2, i 60000) i'
+      System::Call 'kernel32::CloseHandle(p r2)'
+    ${EndIf}
+  ${EndIf}
 !ifdef TESTMODE
   ClearErrors
   ${GetOptions} $R0 "/TESTROOT=" $TestRoot
@@ -490,6 +511,14 @@ Function .onInit
   ${GetOptions} $R0 "/REEXTRACT" $R1
   ${IfNot} ${Errors}
     StrCpy $ForceReextract 1
+  ${EndIf}
+  ; /UPDATE (in-game updater): only on top of an existing install
+  StrCpy $UpdateMode 0
+  ClearErrors
+  ${GetOptions} $R0 "/UPDATE" $R1
+  ${IfNot} ${Errors}
+  ${AndIf} $IsUpgrade == 1
+    StrCpy $UpdateMode 1
   ${EndIf}
   Call ApplyDesktopOption
   ${IfNot} ${Silent}
@@ -854,6 +883,15 @@ FunctionEnd
 Function IsoPageCreate
   Call SetGameDataDir
   Call CheckExistingGameData
+  ${If} $UpdateMode == 1
+    ; keep whatever game data there is; without verified data the game asks
+    ; for the disc image itself, as before the update
+    StrCpy $SkipIso 1
+    ${If} $CanReuse == 1
+      StrCpy $Reuse 1
+    ${EndIf}
+    Abort
+  ${EndIf}
   !insertmacro MUI_HEADER_TEXT "Game data" "Choose your Super Monkey Ball 2 disc image."
   nsDialogs::Create 1018
   Pop $IsoDlg
@@ -993,6 +1031,10 @@ FunctionEnd
 ; ---------------------------------------------------------------- sections
 Section "${APPNAME} (required)" SecCore
   SectionIn RO
+  ${If} $UpdateMode == 1
+    DetailPrint "Updating ${APPNAME} to ${VERSION} (your saves, settings and game data are kept)"
+    SetAutoClose true   ; then the game starts (FinishPagePre)
+  ${EndIf}
   AddSize ${GAMEDATA_KB}   ; the game data is extracted into $INSTDIR\gamedata
   Call SetGameDataDir
   SetOutPath "$INSTDIR"
@@ -1136,6 +1178,11 @@ Section "-Shortcuts and silent extraction"
 SectionEnd
 
 Function ApplyDesktopOption
+  ; /UPDATE keeps the user's desktop shortcut choice
+  ${If} $UpdateMode == 1
+  ${AndIfNot} ${FileExists} "$DeskDir\${LNKNAME}"
+    SectionSetFlags ${SecDesktop} 0
+  ${EndIf}
   ClearErrors
   ${GetOptions} $R0 "/DESKTOP=" $R1
   ${IfNot} ${Errors}
@@ -1477,6 +1524,27 @@ Function OnUserAbortHook
 FunctionEnd
 
 ; ---------------------------------------------------------------- finish
+; /UPDATE: no pages to click through, start the updated game
+Function SkipInUpdateMode
+  ${If} $UpdateMode == 1
+    Abort
+  ${EndIf}
+FunctionEnd
+
+Function FinishPagePre
+  ${If} $UpdateMode == 1
+    Call LaunchGame
+    Abort
+  ${EndIf}
+FunctionEnd
+
+Function .onInstSuccess
+  ${If} ${Silent}
+  ${AndIf} $UpdateMode == 1
+    Call LaunchGame
+  ${EndIf}
+FunctionEnd
+
 Function FinishPageShow
   GetDlgItem $0 $HWNDPARENT 3   ; no way back: everything is installed
   EnableWindow $0 0

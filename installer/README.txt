@@ -28,6 +28,14 @@ asks for your disc image when it starts and extracts it into
 %LOCALAPPDATA%\SMB2\gamedata (no administrator rights needed).
 To redo it for all users, run Setup again and pick the disc image.
 
+Updates
+-------
+When a new version is published, the game shows its release notes at the title screen
+(at most one check a day; only the version number is sent). "Update now" downloads the new
+Setup, checks it (SHA-256) and runs it after the game has closed; Windows asks for
+administrator rights. Your saves, settings and game data are kept. "Skip this version" hides
+that version. Options > Game Screen > Updates (or F1) turns the check off or checks now.
+
 Uninstalling
 ------------
 Settings > Apps (or Control Panel > Programs and Features) > SMB2 > Uninstall.

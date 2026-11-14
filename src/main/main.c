@@ -7,6 +7,7 @@
 #include "pc_settings.h"
 #include "gamedata.h"
 #include "install_mode.h"
+#include "pc_update.h"
 #include <SDL2/SDL_hints.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -224,6 +225,10 @@ int main(int argc, char* argv[]) {
 
     /* Saved settings (or first-run defaults), then command-line overrides */
     pcs_load();
+    /* updater (docs/updater.md): version to the log, automatic check on a
+     * background thread (at most daily; not in automated runs) */
+    pc_update_startup(g_input_script_arg || g_dump_interval_arg || g_exit_frame_arg ||
+                      getenv("SMB2_INPUT_SCRIPT"));
     /* Automated runs (input scripts, frame dumps, --exit-frame) stay
      * windowed unless asked otherwise, so they never take over the screen. */
     if (!(g_cli_overrides & PCS_OVR_MODE) &&

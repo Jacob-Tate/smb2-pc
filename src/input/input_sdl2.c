@@ -562,6 +562,7 @@ static void parse_input_script(void) {
         else if (!strcmp(name, "F1"))    ev->hotkey = 1;
         else if (!strcmp(name, "ESC"))   ev->esc = 1;
         else if (!strcmp(name, "STK"))   ev->hotkey = 2;   /* Controller Sticks screen */
+        else if (!strcmp(name, "UPD"))   ev->hotkey = 3;   /* Updates screen (pc_update_ui.c) */
         /* Analog triggers: TL/TR = full press (0x8C, the value the game
          * treats as fully pulled), TLnnn/TRnnn = explicit 0-255 value.
          * ROW/ROWnn = alternate full L and R pulls, nn frames each (default
@@ -833,7 +834,9 @@ void process_inputs(void)
                 if (s_script[e].hotkey && script_frame == s_script[e].start) {
                     extern void pc_settings_overlay_request(void);
                     extern void pc_stick_screen_request(void);
+                    extern void pc_update_screen_request(void);
                     if (s_script[e].hotkey == 2) pc_stick_screen_request();
+                    else if (s_script[e].hotkey == 3) pc_update_screen_request();
                     else pc_settings_overlay_request();
                 }
                 if (s_script[e].trigL) tl = s_script[e].trigL;

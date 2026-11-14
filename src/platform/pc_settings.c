@@ -82,6 +82,7 @@ static void set_defaults(PcSettings* s) {
     s->aspect = PCS_ASPECT_AUTO;
     s->volume = 100;
     s->fps = 60;
+    s->update_check = 1;
 }
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -217,6 +218,10 @@ static void load_file(PcSettings* s) {
             s->language = l < 0 ? PCS_LANG_AUTO : l;
         }
         else if (!strcmp(line, "fps"))     s->fps = pcs_parse_fps(v);
+        else if (!strcmp(line, "update_check")) s->update_check = atoi(v) ? 1 : 0;
+        else if (!strcmp(line, "update_last"))  s->update_last = strtoll(v, NULL, 10);
+        else if (!strcmp(line, "update_skip"))
+            snprintf(s->update_skip, sizeof s->update_skip, "%s", v);
         else if (!strcmp(line, "iso"))
             snprintf(s->iso_path, sizeof s->iso_path, "%s", v);
     }
@@ -255,6 +260,8 @@ void pcs_save(void) {
     if (s_file.fps == PCS_FPS_UNCAPPED) fprintf(f, "fps=uncapped\n");
     else if (s_file.fps == PCS_FPS_DISPLAY) fprintf(f, "fps=display\n");
     else fprintf(f, "fps=%d\n", s_file.fps);
+    fprintf(f, "update_check=%d\nupdate_last=%lld\n", s_file.update_check, s_file.update_last);
+    if (s_file.update_skip[0]) fprintf(f, "update_skip=%s\n", s_file.update_skip);
     if (s_file.iso_path[0]) fprintf(f, "iso=%s\n", s_file.iso_path);
     fclose(f);
     printf("[settings] saved %s\n", path);
@@ -271,6 +278,24 @@ void pcs_cli_override(int which, const PcSettings* v) {
     if (which & PCS_OVR_LANGUAGE) g_pcs.language = v->language;
     if (which & PCS_OVR_FPS) g_pcs.fps = v->fps;
     sanitize(&g_pcs);
+}
+
+/* updater (docs/updater.md) */
+void pcs_set_update_check(int on) {
+    if (!s_loaded) pcs_load();
+    s_file.update_check = g_pcs.update_check = on ? 1 : 0;
+    pcs_save();
+}
+void pcs_set_update_last(long long t) {
+    if (!s_loaded) pcs_load();
+    s_file.update_last = g_pcs.update_last = t;
+    pcs_save();
+}
+void pcs_set_update_skip(const char* version) {
+    if (!s_loaded) pcs_load();
+    snprintf(s_file.update_skip, sizeof s_file.update_skip, "%s", version ? version : "");
+    snprintf(g_pcs.update_skip, sizeof g_pcs.update_skip, "%s", version ? version : "");
+    pcs_save();
 }
 
 void pcs_set_iso_path(const char* path) {
@@ -506,6 +531,7 @@ static Tr s_item_names[PCS_ITEM_COUNT] = {
     { "Buttons", "Tasten", "Boutons", "Botones", "Pulsanti", "ボタンひょうじ" },
     { "Language", "Sprache", "Langue", "Idioma", "Lingua", "げんご" },
     { "Controllers", "Controller", "Manettes", "Mandos", "Controller", "コントローラー" },
+    { "Updates", "Updates", "Mises à jour", "Actualizaciones", "Aggiornamenti", "アップデート" },
 };
 static Tr s_item_descs[PCS_ITEM_COUNT] = {
     { "Windowed, fullscreen or borderless fullscreen.",
@@ -570,6 +596,12 @@ static Tr s_item_descs[PCS_ITEM_COUNT] = {
       "Palancas: forma GameCube, zona muerta, sensibilidad, calibración.",
       "Levette: forma GameCube, zona morta, sensibilità, calibrazione.",
       "スティックの かたち、あそび、かんど、キャリブレーション。" },
+    { "Check for new versions (automatic check, check now, version info).",
+      "Nach neuen Versionen suchen (automatisch, jetzt suchen, Version).",
+      "Rechercher une nouvelle version (automatique, maintenant, version).",
+      "Buscar versiones nuevas (automático, buscar ahora, versión).",
+      "Cerca nuove versioni (automatico, cerca ora, versione).",
+      "あたらしい バージョンを さがします（じどう、いますぐ、バージョン）。" },
 };
 static Tr s_tr_windowed = { "Windowed", "Fenster", "Fenêtre", "Ventana", "Finestra", "ウインドウ" };
 static Tr s_tr_fullscreen = { "Fullscreen", "Vollbild", "Plein écran", "Completa", "Schermo intero", "フルスクリーン" };
@@ -677,6 +709,8 @@ const char* pcs_item_value(int item) {
             add_restart(buf, sizeof buf);
         return buf;
     }
+    case PCS_ITEM_UPDATES:   /* the automatic check; A opens the Updates screen */
+        return pc_text_pick(g_pcs.update_check ? s_tr_on : s_tr_off);
     }
     return "";
 }

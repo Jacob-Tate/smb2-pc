@@ -39,6 +39,12 @@ text or disc files). The game data is read from your disc image at run time.
   ([docs/detmath.md](docs/detmath.md)).
 - A Windows installer that extracts the game data from your disc image once,
   or a portable build that reads the image directly.
+- Update check: once a day at most, the game looks for a newer release on
+  GitHub and shows its release notes at the title screen; you choose Update
+  now (installed version: download, SHA-256 check, Setup updates in place and
+  keeps your saves), Later or Skip this version. Portable copies get a link to
+  the download page. Off in Options > Game Screen > Updates
+  ([docs/updater.md](docs/updater.md)).
 
 ## Installing and playing
 
@@ -84,7 +90,10 @@ is GameCube A); Nintendo pads are mapped by label, as in Nintendo's own ports.
 ### Settings
 
 In game: Options > Game Screen (resolution, fullscreen, aspect, frame rate,
-vsync, MSAA, renderer, language, button prompts, volume) or the F1 overlay.
+vsync, MSAA, renderer, language, button prompts, volume, controllers,
+updates) or the F1 overlay, which also shows the version. The Updates row
+opens a screen with "Check automatically" (On by default; at most once a
+day, only the version number is sent) and "Check now".
 They are stored in `settings.dat`. Command-line options override them for one
 run; `smb2_pc_port.exe --help` lists them all, the main ones:
 
@@ -199,7 +208,8 @@ CMake options:
 | `SMB2_GAME` | `OFF` | link the decompiled game (without it only the platform layer is built) |
 | `SMB2_DECOMP_DIR` | `../decomp` | the decompilation checkout |
 | `LLVM_MINGW_ROOT` | `../toolchains/llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64` | llvm-mingw for `cmake/llvm-mingw64.cmake` (also read from the environment) |
-| `SMB2_VERSION` | `0.0.0-dev` | version in the exe's version resource |
+| `SMB2_VERSION` | `0.0.0-dev` | version in the exe's version resource, the log, the F1 overlay; compared with GitHub releases by the updater |
+| `SMB2_UPDATE_REPO` | empty | GitHub `owner/name` whose releases the in-game updater checks; empty = updater compiled in but disabled ([docs/updater.md](docs/updater.md)) |
 | `SMB2_PTR_WARNINGS` | `OFF` | report pointer/int size-mismatch casts in game code instead of `-w` |
 | `CMAKE_BUILD_TYPE` | `Release` | |
 
@@ -228,6 +238,8 @@ build that only writes below a test folder ([docs/installer.md](docs/installer.m
 - [docs/language.md](docs/language.md): languages and text encoding
 - [docs/installer.md](docs/installer.md): installer, game data extraction,
   installed/portable layout
+- [docs/updater.md](docs/updater.md): in-game update check and the release
+  procedure (`tools/make_release.sh`, SHA256SUMS.txt)
 - [docs/x64_work_packages.md](docs/x64_work_packages.md): checklist for
   pointer-size changes and the test harness (`tools/x64test/modes.sh`)
 

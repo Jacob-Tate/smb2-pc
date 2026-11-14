@@ -355,6 +355,14 @@ void video_finish_frame(void)
             pc_stick_screen_run(0);
             s_hfr_skip = 1;
         }
+        /* updater (pc_update_ui.c): results of the background check, the
+         * release notes box (requested at a safe moment by pc_quit.c's
+         * pc_menu_quit_tick) and the Updates screen (Options page) */
+        extern void pc_update_poll(void);
+        extern int pc_update_ui_run_requested(void);
+        pc_update_poll();
+        if (g_gx_presents_frames && pc_update_ui_run_requested())
+            s_hfr_skip = 1;
     }
     /* gx_start_new_frame (GXCopyDisp) presents on PC once the game's render
      * loop is running; swap here only during early boot before that. */

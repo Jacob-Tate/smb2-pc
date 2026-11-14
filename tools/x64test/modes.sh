@@ -33,6 +33,7 @@
 # Setup (runs the Windows exe from WSL):
 #   SMB2_ISO      your disc image as a Windows path (required for runs)
 #   SMB2_X64_WS   workspace root holding pc_port/, runs/ and tools/
+#   SMB2_UPDATE_TEST / SMB2_UPDATE_TEMP / SMB2_UPDATE_DRYRUN  passed through (docs/updater.md)
 #                 (default: the directory containing this pc_port checkout)
 #   $WS/tools/ppmtool           gcc -O2 -o $WS/tools/ppmtool pc_port/tools/ppmtool.c -lz
 #   $WS/tools/memcard_pristine  a memcard/ folder to start every run from
@@ -129,7 +130,7 @@ run_mode() { # label bindir mode extra...
   [ "$SCRIPT" != "-" ] && args+=(--input-script "$SCRIPT")
   local try
   for try in 1 2 3; do
-    ( cd "$bin" && SMB2_PC_LAUNCHER=$L WSLENV=SMB2_PC_LAUNCHER:SMB2_PC_STAGE:SMB2_RENDERER:SMB2_HEAP_CHECK:SMB2_HFR_DEBUG:SMB2_HFR_FIXED:SMB2_HFR_DEBUG_FULL:SMB2_HFR_PROFILE:SMB2_HFR_DEFER:SMB2_HFR_SWITCH:SMB2_HFR_DEBUG2 timeout 600 ./smb2_pc_port.exe "${args[@]}" "$@" > "$out/log.txt" 2>&1; echo "exit $?" >> "$out/log.txt" )
+    ( cd "$bin" && SMB2_PC_LAUNCHER=$L WSLENV=SMB2_PC_LAUNCHER:SMB2_PC_STAGE:SMB2_RENDERER:SMB2_HEAP_CHECK:SMB2_HFR_DEBUG:SMB2_HFR_FIXED:SMB2_HFR_DEBUG_FULL:SMB2_HFR_PROFILE:SMB2_HFR_DEFER:SMB2_HFR_SWITCH:SMB2_HFR_DEBUG2:SMB2_UPDATE_TEST:SMB2_UPDATE_TEMP:SMB2_UPDATE_DRYRUN timeout 600 ./smb2_pc_port.exe "${args[@]}" "$@" > "$out/log.txt" 2>&1; echo "exit $?" >> "$out/log.txt" )
     # WSL interop sometimes fails to start the Windows process at all
     # ("UtilAcceptVsock: accept4 failed"): retry those, nothing else
     grep -aq 'main() started' "$out/log.txt" && break

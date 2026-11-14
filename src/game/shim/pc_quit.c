@@ -27,6 +27,7 @@ struct TextBox;
 #include "pc_settings.h"
 #include "pc_quit.h"
 #include "pc_text.h"
+#include "pc_update.h"
 
 extern u32 fn_1_C2478(void);                /* hud.c: yes/no cursor flash */
 extern int pc_memcard_io_busy(void);        /* memcard.c (PC-only) */
@@ -229,6 +230,17 @@ int pc_menu_quit_tick(int where, int can_open, unsigned int open_buttons)
 
     if (s_menu_where == where && pc_quit_requested())
         return PCQ_NONE;
+    /* updater: a safe moment for the release notes box of the automatic
+     * check (idle title / Mode Select, no Quit box, no memory card job);
+     * it runs modally at the end of this frame (pc_update_ui.c) */
+    if (can_open && s_menu_where != where && !pc_quit_requested() && !pc_quit_confirm_active() &&
+        !memcard_busy() && pc_update_should_prompt()) {
+        printf("[update] safe moment on the %s: opening the release notes box\n",
+               where == PCMQ_TITLE ? "title screen" : "Mode Select");
+        fflush(stdout);
+        pc_update_notes_request();
+        return -1;
+    }
     if (s_menu_where == where && !pc_quit_confirm_active())
         s_menu_where = 0;   /* closed elsewhere */
     if (s_menu_where != where) {

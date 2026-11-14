@@ -152,11 +152,24 @@ set(SOURCES
     src/assets/gamedata.c
     src/assets/disc_icon.c
     src/platform/install_mode.c
+    src/platform/pc_update.c
     src/main/main.c
 )
 
 # Version shown in the exe's VERSIONINFO (installer/build.sh passes its --version)
 set(SMB2_VERSION "0.0.0-dev" CACHE STRING "Version string for the Windows VERSIONINFO resource")
+# In-game updater (docs/updater.md): GitHub repo "owner/name" whose Releases
+# are checked; empty = compiled in but disabled
+set(SMB2_UPDATE_REPO "" CACHE STRING "GitHub owner/name checked for updates (empty = updater disabled)")
+if(NOT SMB2_UPDATE_REPO STREQUAL "" AND NOT SMB2_UPDATE_REPO MATCHES "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+    message(FATAL_ERROR "SMB2_UPDATE_REPO must be owner/name, got '${SMB2_UPDATE_REPO}'")
+endif()
+if(NOT SMB2_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.+-]*)?$")
+    message(FATAL_ERROR "SMB2_VERSION must look like 1.2.3 or 1.2.3-rc1, got '${SMB2_VERSION}'")
+endif()
+# only pc_update.c sees them, so a new version rebuilds one file
+set_source_files_properties(src/platform/pc_update.c PROPERTIES COMPILE_DEFINITIONS
+    "SMB2_VERSION_STR=\"${SMB2_VERSION}\";SMB2_UPDATE_REPO_STR=\"${SMB2_UPDATE_REPO}\"")
 
 # Windows: VERSIONINFO (FileDescription/ProductName "SMB2") + the generic
 # Explorer icon.  Both the i686 (windres) and x86_64 (llvm-mingw windres)
@@ -405,7 +418,7 @@ if(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Windows")
         ${SDL2_LIBRARIES}
         opengl32
         m kernel32 user32 gdi32 winmm imm32 ole32 oleaut32
-        version uuid advapi32 setupapi shell32 dinput8
+        version uuid advapi32 setupapi shell32 dinput8 winhttp
     )
 else()
     target_link_libraries(smb2_pc_port

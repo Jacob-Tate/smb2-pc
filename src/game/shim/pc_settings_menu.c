@@ -28,6 +28,7 @@ struct TextBox;
 #include "pc_settings.h"
 #include "pc_quit.h"
 #include "pc_text.h"
+#include "pc_update.h"
 
 /* ---- game symbols not (correctly) declared in the headers ---- */
 struct ScreenOption {
@@ -69,9 +70,10 @@ void pc_game_set_wide_mode(int wide) { modeCtrl.wideMode = wide ? 1 : 0; }
 #define GAME_ROWS 2
 #define QUIT_ROW (GAME_ROWS + PCS_ITEM_COUNT)
 #define ROW_COUNT (QUIT_ROW + 1)
-#define ROW_SPACING 24.0f   /* F1 overlay: 12 rows (Controllers added) */
-/* the Options page has to fit 12 rows above the game's description box */
-#define PAGE_ROW_SPACING 20.0f
+#define ROW_SPACING 22.0f   /* F1 overlay: 13 rows (Controllers, Updates added) */
+/* the Options page has to fit 15 rows (2 game + 12 PC + Quit) above the
+ * game's description box */
+#define PAGE_ROW_SPACING 19.0f
 #define PAGE_TEXT_SCALE_Y 0.85f
 
 static const char *row_name(int r)
@@ -127,6 +129,7 @@ struct ListView {
     int bullet;          /* draw the 0x1700 cursor bullet (else a ">" glyph) */
     const char *title;   /* optional, above the list */
     const char *hint;    /* optional, below the description */
+    const char *version; /* optional, small, top right (F1 overlay) */
     float descY, hintY;
     float spacing;       /* row pitch */
     float textScaleY;    /* row text height scale */
@@ -164,6 +167,16 @@ static void draw_list(const struct ListView *v)
         textdraw_set_scale(1.0f, 1.1f);
         textdraw_set_pos(320.0f, v->y - 40.0f);
         textdraw_print((char *)v->title);
+    }
+    if (v->version != NULL) {
+        textdraw_reset();
+        textdraw_set_font(3);
+        textdraw_set_flags(0xA0000000U);
+        textdraw_set_alignment(3);
+        textdraw_set_mul_color(0xA0A0A0U);
+        textdraw_set_scale(0.55f, 0.6f);
+        textdraw_set_pos(v->boxCX + v->boxW * 0.5f - 50.0f, v->y - 34.0f);
+        textdraw_print((char *)v->version);
     }
 
     /* the Quit to Desktop yes/no box replaces the rows while it is open.
@@ -294,7 +307,7 @@ void pc_screen_page_create(void)
     sprite = create_sprite();
     if (sprite != NULL) {
         sprite->x = 170.0f;
-        sprite->y = 92.0f;
+        sprite->y = 86.0f;   /* 15 rows at 19 px end where 14 at 20 did */
         sprite->tag = 0x5D;
         sprite->drawFunc = page_draw;
         strcpy(sprite->text, "screen");
@@ -347,6 +360,10 @@ void pc_screen_page_tick(void)
                 /* Controller Sticks screen, modal at the end of this frame */
                 sound |= 8;
                 pc_stick_screen_request();
+            } else if (s_page.cursor == GAME_ROWS + PCS_ITEM_UPDATES) {
+                /* Updates screen (pc_update_ui.c), modal at the end of this frame */
+                sound |= 8;
+                pc_update_screen_request();
             } else if (row_enabled(s_page.cursor)) {
                 sound |= 8;
                 if (s_page.cursor < GAME_ROWS)
@@ -489,6 +506,11 @@ static void overlay_draw(int cursor, int editing, int timer)
             "Su/Giù: scegli   A: modifica   B / F1: chiudi",
             "うえ/した:えらぶ   A:へんこう   B / F1:とじる" };
         v.title = pc_text_pick(title);
+        {
+            static char ver[48];
+            snprintf(ver, sizeof ver, "v%s", pc_update_current_version());
+            v.version = ver;
+        }
         v.hint = pc_text_pick(pc_quit_confirm_active() ? hint_confirm
                               : editing ? hint_edit : hint_list);
     }
@@ -570,6 +592,12 @@ void pc_settings_overlay_run(void)
                     call_SoundReqID_arg_0(0x65);
                     pc_stick_screen_run(1);
                     prev = pad_held();   /* buttons still down from that screen */
+                } else if (cursor == PCS_ITEM_UPDATES) {
+                    call_SoundReqID_arg_0(0x65);
+                    pc_update_screen_run(1);
+                    prev = pad_held();
+                    if (pc_quit_requested())
+                        close = 1;   /* Setup started: back to the game, which quits */
                 } else if (pcs_item_enabled(cursor)) {
                     pcs_item_begin_edit(cursor);
                     editing = 1;

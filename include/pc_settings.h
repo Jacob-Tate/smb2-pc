@@ -34,6 +34,9 @@ typedef struct {
     int fps;             /* rendered frames per second (docs/hfr.md): 60 =
                           * one per game tick (no interpolation), N > 60,
                           * PCS_FPS_UNCAPPED, PCS_FPS_DISPLAY (refresh rate) */
+    int update_check;    /* automatic update check at start, at most daily (docs/updater.md) */
+    long long update_last;   /* time() of the last completed update check, 0 = never */
+    char update_skip[32];    /* release the user chose "Skip this version" for */
     char iso_path[1024];
 } PcSettings;
 
@@ -92,6 +95,7 @@ enum {
     PCS_ITEM_RENDERER, PCS_ITEM_ASPECT, PCS_ITEM_VOLUME, PCS_ITEM_BUTTONS,
     PCS_ITEM_LANGUAGE,
     PCS_ITEM_CONTROLLERS,   /* opens the Controller Sticks screen (pc_stick_menu.c) */
+    PCS_ITEM_UPDATES,       /* opens the Updates screen (pc_update_ui.c) */
     PCS_ITEM_COUNT
 };
 const char* pcs_item_name(int item);
@@ -109,6 +113,11 @@ void pcs_item_cancel(int item);         /* restore + re-apply */
 void pc_stick_screen_run(int captured);
 void pc_stick_screen_request(void);
 int  pc_stick_screen_take_request(void);
+
+/* Updater settings (docs/updater.md): written to settings.dat at once. */
+void pcs_set_update_check(int on);
+void pcs_set_update_last(long long t);
+void pcs_set_update_skip(const char* version);
 
 /* F1 overlay request flag (set by the F1 key / "F1" input-script token). */
 void pc_settings_overlay_request(void);
