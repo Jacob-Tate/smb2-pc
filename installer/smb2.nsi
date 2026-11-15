@@ -856,22 +856,9 @@ Function PrecheckIso
     StrCpy $0 "The file was not found:$\r$\n$0"
     Goto done
   ${EndIf}
-  ${GetFileExt} $0 $3
-  Call ReadDiscId
-  ${If} $3 == "iso"
-  ${OrIf} $3 == "gcm"
-    ${If} $1 == "GM2E8P"
-      StrCpy $0 ""
-    ${ElseIf} $1 == "GM2P8P"
-      StrCpy $0 "This is the European (PAL) version of Super Monkey Ball 2 (disc ID GM2P8P).$\r$\nOnly the USA version (GM2E8P) is supported."
-    ${ElseIf} $1 == "GM2J8P"
-      StrCpy $0 "This is the Japanese version of Super Monkey Ball 2 (disc ID GM2J8P).$\r$\nOnly the USA version (GM2E8P) is supported."
-    ${Else}
-      StrCpy $0 "This file is not a Super Monkey Ball 2 (USA) GameCube disc image.$\r$\n(Disc ID found: $\"$1$\"; expected GM2E8P.)"
-    ${EndIf}
-  ${Else}
-    StrCpy $0 ""   ; other formats: the port decides (RVZ/NKit/CISO support is optional)
-  ${EndIf}
+  ; any disc ID is accepted (asset mods change it); the port's --extract-iso
+  ; refuses what it can't read (compressed images, Wii discs, other files)
+  StrCpy $0 ""
 done:
   Pop $4
   Pop $3
@@ -964,7 +951,7 @@ Function IsoEditChanged
   ${If} $1 == "GM2E8P"
     ${NSD_SetText} $IsoInfo "Disc ID GM2E8P: Super Monkey Ball 2 (USA). OK."
   ${Else}
-    ${NSD_SetText} $IsoInfo "Disc ID $\"$1$\": this does not look like Super Monkey Ball 2 (USA, GM2E8P)."
+    ${NSD_SetText} $IsoInfo "Disc ID $\"$1$\" (not the original GM2E8P; fine for a mod of it)."
   ${EndIf}
 FunctionEnd
 
@@ -1451,7 +1438,7 @@ Function ExFinished
   ${If} $ExtractCode == 0
     StrCpy $1 "$MigrateMsg Please choose your disc image to extract the game data again."
   ${ElseIf} $ExtractCode == 2
-    StrCpy $1 "This disc image is not Super Monkey Ball 2 for the GameCube, USA version (GM2E8P). Other games and other regions (Europe, Japan) are not supported."
+    StrCpy $1 "This file is not a GameCube disc image (a Wii disc or another kind of file)."
   ${ElseIf} $ExtractCode == 3
     StrCpy $1 "The disc image could not be read. It may be damaged or incomplete, or in a format that is not supported (use a plain .iso or .gcm dump of the disc)."
   ${ElseIf} $ExtractCode == 4

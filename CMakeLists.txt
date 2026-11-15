@@ -152,6 +152,7 @@ set(SOURCES
     src/assets/disc_icon.c
     src/platform/install_mode.c
     src/platform/pc_update.c
+    src/platform/pc_file_dialog.c
     src/main/main.c
 )
 
@@ -217,6 +218,7 @@ if(SMB2_GAME)
         ${SMB2_DECOMP_DIR}/src/boat/*.c
         ${SMB2_DECOMP_DIR}/src/dogfight/*.c
         ${SMB2_DECOMP_DIR}/src/baseball/*.c
+        ${SMB2_DECOMP_DIR}/src/golf2/*.c
         ${SMB2_DECOMP_DIR}/src/sel_ngc/*.c
     )
     if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
@@ -333,6 +335,9 @@ if(SMB2_GAME)
     file(GLOB MINI_BASEBALL_SOURCES ${SMB2_DECOMP_DIR}/src/baseball/*.c)
     set_source_files_properties(${MINI_BASEBALL_SOURCES} PROPERTIES
         COMPILE_DEFINITIONS "_prolog=baseballPrologue;_epilog=baseballEpilogue;_unresolved=baseballUnresolved")
+    file(GLOB MINI_GOLF_SOURCES ${SMB2_DECOMP_DIR}/src/golf2/*.c)
+    set_source_files_properties(${MINI_GOLF_SOURCES} PROPERTIES
+        COMPILE_DEFINITIONS "_prolog=golfPrologue;_epilog=golfEpilogue;_unresolved=golfUnresolved")
 
     file(GLOB SEL_NGC_SOURCES ${SMB2_DECOMP_DIR}/src/sel_ngc/*.c)
     set_source_files_properties(${SEL_NGC_SOURCES} PROPERTIES

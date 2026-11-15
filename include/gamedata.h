@@ -18,7 +18,7 @@ extern "C" {
 
 enum {
     GD_OK = 0,
-    GD_ERR_NOT_SMB2 = 2,    /* not SMB2 / wrong region / revision */
+    GD_ERR_NOT_SMB2 = 2,    /* not a GameCube disc (Wii disc, random file) */
     GD_ERR_IMAGE = 3,       /* unreadable / corrupt / unsupported image */
     GD_ERR_WRITE = 4,       /* write error / disk full */
     GD_ERR_OTHER = 5,
@@ -34,12 +34,13 @@ typedef void (*GdProgressFn)(uint64_t done, uint64_t total, void* user);
  * one-line message. */
 int gamedata_extract(const char* iso, const char* dir, GdProgressFn cb, void* user,
                      char* msg, size_t msgsz);
-/* Is iso a plain GM2E8P disc image (not RVZ/NKit/another game)?  Returns
- * GD_OK or an error code + a one-line reason for the user. */
+/* Is iso a plain GameCube disc image the port can read (not RVZ/NKit/Wii)?
+ * Any ID/revision is accepted (asset mods).  Returns GD_OK with the disc
+ * ID/name in msg, or an error code + a one-line reason for the user. */
 int gamedata_check_image(const char* iso, char* msg, size_t msgsz);
 /* Full check: every manifest file present with the recorded size + CRC32. */
 int gamedata_verify(const char* dir, GdProgressFn cb, void* user, char* msg, size_t msgsz);
-/* Cheap runtime check: manifest parses, disc id matches, every file exists
+/* Cheap runtime check: manifest parses (any disc id), every file exists
  * with the recorded size.  true = usable. */
 bool gamedata_quick_check(const char* dir, char* msg, size_t msgsz);
 

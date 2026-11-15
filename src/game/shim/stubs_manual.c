@@ -140,6 +140,7 @@ void g_something_with_locked_cache_2(void *dest, int value, uint32_t size)
  * main thread, print its eip + stack (symbolize offline like a crash), die. */
 #ifdef _WIN32
 volatile long g_shim_frame_pulse;
+extern volatile long g_shim_watchdog_hold;   /* pc_file_dialog.c: a system dialog is open */
 static HANDLE s_main_thread;
 
 static DWORD WINAPI shim_watchdog_main(LPVOID arg)
@@ -149,7 +150,7 @@ static DWORD WINAPI shim_watchdog_main(LPVOID arg)
     (void)arg;
     for (;;) {
         Sleep(2000);
-        if (g_shim_frame_pulse != last) {
+        if (g_shim_frame_pulse != last || g_shim_watchdog_hold > 0) {
             last = g_shim_frame_pulse;
             quiet = 0;
             continue;

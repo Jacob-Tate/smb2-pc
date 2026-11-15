@@ -41,8 +41,6 @@ unsigned char continue_gma_model[32 * PC_STUB_SCALE] __attribute__((aligned(32))
 int draw_sega_splash_wrapper() { shim_log_once("draw_sega_splash_wrapper"); return 0; }
 void *find_stage_or_bg_model() { shim_log_once("find_stage_or_bg_model"); return 0; } /* not in symbol maps */
 int fn_8000A71C() { shim_log_once("fn_8000A71C"); return 0; }
-int fn_8000A730() { shim_log_once("fn_8000A730"); return 0; }
-int fn_8000A75C() { shim_log_once("fn_8000A75C"); return 0; }
 char *fn_8000F954() { shim_log_once("fn_8000F954"); return 0; }
 int fn_80058C08() { shim_log_once("fn_80058C08"); return 0; }
 int fn_8005A3DC() { shim_log_once("fn_8005A3DC"); return 0; }
@@ -270,4 +268,4 @@ int set_free_to_heap_func_ptr() { shim_log_once("set_free_to_heap_func_ptr"); re
 unsigned char worm_surface_gma_model[32 * PC_STUB_SCALE] __attribute__((aligned(32)));
 unsigned char wormhole_gma_model[32 * PC_STUB_SCALE] __attribute__((aligned(32)));
 /* sel_ngc_option DOL refs (sizes from symbols.txt); lbl_80145210, lbl_80081AC0
- * and fn_8000A380 are defined in src/input/input_sdl2.c (docs/stick.md) */
+ * and fn_8000A380/A730/A75C are defined in src/input/input_sdl2.c (docs/stick.md) */

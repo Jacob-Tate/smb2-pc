@@ -29,6 +29,7 @@ struct TextBox;
 #include "pc_quit.h"
 #include "pc_text.h"
 #include "pc_update.h"
+#include "pc_memcard_ui.h"
 
 /* ---- game symbols not (correctly) declared in the headers ---- */
 struct ScreenOption {
@@ -70,11 +71,11 @@ void pc_game_set_wide_mode(int wide) { modeCtrl.wideMode = wide ? 1 : 0; }
 #define GAME_ROWS 2
 #define QUIT_ROW (GAME_ROWS + PCS_ITEM_COUNT)
 #define ROW_COUNT (QUIT_ROW + 1)
-#define ROW_SPACING 22.0f   /* F1 overlay: 13 rows */
-/* the Options page has to fit 15 rows (2 game + 12 PC + Quit) above the
+#define ROW_SPACING 20.5f   /* F1 overlay: 14 rows */
+/* the Options page has to fit 16 rows (2 game + 13 PC + Quit) above the
  * game's description box */
-#define PAGE_ROW_SPACING 19.0f
-#define PAGE_TEXT_SCALE_Y 0.85f
+#define PAGE_ROW_SPACING 17.5f
+#define PAGE_TEXT_SCALE_Y 0.8f
 
 static const char *row_name(int r)
 {
@@ -307,7 +308,7 @@ void pc_screen_page_create(void)
     sprite = create_sprite();
     if (sprite != NULL) {
         sprite->x = 170.0f;
-        sprite->y = 86.0f;   /* 15 rows at 19 px end above the description box */
+        sprite->y = 84.0f;   /* 16 rows at 17.5 px end above the description box */
         sprite->tag = 0x5D;
         sprite->drawFunc = page_draw;
         strcpy(sprite->text, "screen");
@@ -364,6 +365,10 @@ void pc_screen_page_tick(void)
                 /* Updates screen (pc_update_ui.c), modal at the end of this frame */
                 sound |= 8;
                 pc_update_screen_request();
+            } else if (s_page.cursor == GAME_ROWS + PCS_ITEM_MEMCARD) {
+                /* Memory Card screen (pc_memcard_ui.c), modal at the end of this frame */
+                sound |= 8;
+                pc_memcard_screen_request();
             } else if (row_enabled(s_page.cursor)) {
                 sound |= 8;
                 if (s_page.cursor < GAME_ROWS)
@@ -466,11 +471,11 @@ static void overlay_draw(int cursor, int editing, int timer)
     v.count = OVERLAY_ROWS;
     v.cursor = GAME_ROWS + cursor;
     v.spacing = ROW_SPACING;
-    v.textScaleY = 1.0f;
+    v.textScaleY = 0.95f;
     v.editing = editing;
     v.timer = timer;
     v.x = 170.0f;
-    v.y = 104.0f;
+    v.y = 100.0f;
     v.valueX = 420.0f;
     v.boxBmp = 5;
     v.boxCX = 320.0f;
@@ -598,6 +603,12 @@ void pc_settings_overlay_run(void)
                     prev = pad_held();
                     if (pc_quit_requested())
                         close = 1;   /* Setup started: back to the game, which quits */
+                } else if (cursor == PCS_ITEM_MEMCARD) {
+                    call_SoundReqID_arg_0(0x65);
+                    pc_memcard_screen_run(1);
+                    prev = pad_held();
+                    if (pc_quit_requested())
+                        close = 1;   /* save imported: back to the game, which quits */
                 } else if (pcs_item_enabled(cursor)) {
                     pcs_item_begin_edit(cursor);
                     editing = 1;

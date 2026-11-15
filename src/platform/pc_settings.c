@@ -539,6 +539,7 @@ static Tr s_item_names[PCS_ITEM_COUNT] = {
     { "Language", "Sprache", "Langue", "Idioma", "Lingua", "げんご" },
     { "Controllers", "Controller", "Manettes", "Mandos", "Controller", "コントローラー" },
     { "Updates", "Updates", "Mises à jour", "Actualizaciones", "Aggiornamenti", "アップデート" },
+    { "Memory card", "Memory Card", "Carte mémoire", "Tarjeta de memoria", "Memory card", "メモリーカード" },
 };
 static Tr s_item_descs[PCS_ITEM_COUNT] = {
     { "Windowed, fullscreen or borderless fullscreen.",
@@ -609,6 +610,12 @@ static Tr s_item_descs[PCS_ITEM_COUNT] = {
       "Buscar versiones nuevas (automático, buscar ahora, versión).",
       "Cerca nuove versioni (automatico, cerca ora, versione).",
       "あたらしい バージョンを さがします（じどう、いますぐ、バージョン）。" },
+    { "Import a save from Dolphin or a GameCube memory card, or export yours.",
+      "Spielstand aus Dolphin oder von einer GameCube-Memory-Card importieren oder exportieren.",
+      "Importer une sauvegarde de Dolphin ou d'une carte mémoire GameCube, ou exporter la vôtre.",
+      "Importar una partida de Dolphin o de una tarjeta de GameCube, o exportar la tuya.",
+      "Importa un salvataggio da Dolphin o da una memory card GameCube, o esporta il tuo.",
+      "Dolphinや ゲームキューブの メモリーカードの セーブを よみこむ、または かきだします。" },
 };
 static Tr s_tr_windowed = { "Windowed", "Fenster", "Fenêtre", "Ventana", "Finestra", "ウインドウ" };
 static Tr s_tr_fullscreen = { "Fullscreen", "Vollbild", "Plein écran", "Completa", "Schermo intero", "フルスクリーン" };

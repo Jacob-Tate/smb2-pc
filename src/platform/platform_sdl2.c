@@ -923,10 +923,11 @@ bool platform_show_settings_menu(GameSettings* settings) {
     return true;
 }
 
-/* A checked, opened GM2E8P image, or NULL with the reason in msg. */
+/* A checked, opened disc image, or NULL with the reason in msg. */
 static ISOArchive* open_disc_image(const char* path, char* msg, size_t n) {
     ISOArchive* arc;
     if (gamedata_check_image(path, msg, n) != GD_OK) return NULL;
+    printf("[iso] %s: %s\n", path, msg);   /* any ID: mods are allowed */
     arc = iso_open(path);
     if (!arc) snprintf(msg, n, "%s could not be read as a GameCube disc image", path);
     return arc;

@@ -56,6 +56,7 @@ typedef uint64_t u64;
 #define CARD_SECTOR_SIZE  0x2000
 #define CARD_USER_BLOCKS  ((CARD_MEM_SIZE_MBIT * 1024 * 1024 / 8) / CARD_SECTOR_SIZE - 5) /* 251 */
 #define CARD_SERIAL_NO    0x534D42325043ULL      /* "SMB2PC" */
+#define CARD_ATTR_PUBLIC  0x04
 
 /* Real SDK layouts (match decomp main_loop/memcard.c) */
 typedef struct {
@@ -102,6 +103,9 @@ typedef struct {
     u16 iconFormat;
     u16 iconSpeed;
     u32 commentAddr;
+    u8 permission;
+    u8 copyTimes;
+    u16 firstBlock;    /* imported files: their block on the source card */
 } CardEntry;
 
 static CardEntry s_dir[CARD_MAX_FILE];
@@ -188,9 +192,8 @@ static void entry_path(const char *fileName, const char *ext, char *out, size_t 
 /* ------------------------------------------------------------------ */
 /* sidecar                                                             */
 
-static int save_meta(int fileNo)
+static int write_meta(const CardEntry *e, int fileNo)
 {
-    const CardEntry *e = &s_dir[fileNo];
     char path[600];
     FILE *f;
 
@@ -209,6 +212,10 @@ static int save_meta(int fileNo)
     fprintf(f, "iconFormat=0x%04X\n", (unsigned)e->iconFormat);
     fprintf(f, "iconSpeed=0x%04X\n", (unsigned)e->iconSpeed);
     fprintf(f, "commentAddr=0x%08X\n", (unsigned)e->commentAddr);
+    fprintf(f, "permission=0x%02X\n", (unsigned)e->permission);
+    fprintf(f, "copyTimes=%u\n", (unsigned)e->copyTimes);
+    if (e->firstBlock)
+        fprintf(f, "firstBlock=%u\n", (unsigned)e->firstBlock);
     fflush(f);
     if (ferror(f)) {
         fclose(f);
@@ -216,6 +223,11 @@ static int save_meta(int fileNo)
     }
     fclose(f);
     return CARD_RESULT_READY;
+}
+
+static int save_meta(int fileNo)
+{
+    return write_meta(&s_dir[fileNo], fileNo);
 }
 
 static void parse_hex_bytes(const char *s, u8 *out, int n)
@@ -229,19 +241,20 @@ static void parse_hex_bytes(const char *s, u8 *out, int n)
     }
 }
 
-static void load_meta(const char *path)
+/* <name>.meta -> *pe; 0 if it is not a usable entry */
+static int parse_meta(const char *path, CardEntry *pe, int *pfileNo)
 {
     FILE *f = fopen(path, "rb");
     char line[256];
     CardEntry e;
     int fileNo = -1;
-    int i;
 
     if (!f)
-        return;
+        return 0;
     memset(&e, 0, sizeof(e));
     e.iconAddr = 0xFFFFFFFFu;
     e.commentAddr = 0xFFFFFFFFu;
+    e.permission = CARD_ATTR_PUBLIC;   /* .meta files written before these keys */
     while (fgets(line, sizeof(line), f)) {
         char *eq = strchr(line, '=');
         char *val;
@@ -264,10 +277,13 @@ static void load_meta(const char *path)
         else if (!strcmp(line, "iconFormat")) e.iconFormat = (u16)strtoul(val, NULL, 0);
         else if (!strcmp(line, "iconSpeed")) e.iconSpeed = (u16)strtoul(val, NULL, 0);
         else if (!strcmp(line, "commentAddr")) e.commentAddr = (u32)strtoul(val, NULL, 0);
+        else if (!strcmp(line, "permission")) e.permission = (u8)strtoul(val, NULL, 0);
+        else if (!strcmp(line, "copyTimes")) e.copyTimes = (u8)strtoul(val, NULL, 0);
+        else if (!strcmp(line, "firstBlock")) e.firstBlock = (u16)strtoul(val, NULL, 0);
     }
     fclose(f);
     if (!e.fileName[0] || e.length == 0 || (e.length % CARD_SECTOR_SIZE) != 0)
-        return;
+        return 0;
     {   /* a .meta without its .bin holds no save: leave it off the card (a
          * new save under that name backs the .meta up first, see
          * backup_stray) */
@@ -276,9 +292,21 @@ static void load_meta(const char *path)
         entry_path(e.fileName, ".bin", bin, sizeof(bin));
         if (stat(bin, &st) != 0) {
             fprintf(stderr, "[card] %s has no data file; ignoring it\n", path);
-            return;
+            return 0;
         }
     }
+    *pe = e;
+    *pfileNo = fileNo;
+    return 1;
+}
+
+static void load_meta(const char *path)
+{
+    CardEntry e;
+    int fileNo, i;
+
+    if (!parse_meta(path, &e, &fileNo))
+        return;
     for (i = 0; i < CARD_MAX_FILE; i++)
         if (s_dir[i].used && !strcmp(s_dir[i].fileName, e.fileName))
             return;
@@ -358,6 +386,7 @@ static void adopt_orphan_bins(void)
         memcpy(e->company, id + 4, 2);
         e->iconAddr = 0xFFFFFFFFu;
         e->commentAddr = 0xFFFFFFFFu;
+        e->permission = CARD_ATTR_PUBLIC;
         e->used = 1;
         fprintf(stderr, "[card] %s has no usable .meta; listing it as this game's file\n", de->d_name);
     }
@@ -428,9 +457,11 @@ static int find_file(const char *name)
 }
 
 /* SDK __CARDGetControlBlock equivalent: only chan 0 has a card */
+static int s_frozen;
+
 static s32 check_chan(s32 chan, int needMount)
 {
-    if (chan != 0)
+    if (chan != 0 || s_frozen)
         return CARD_RESULT_NOCARD;
     if (needMount && !s_mounted)
         return CARD_RESULT_NOCARD;
@@ -518,8 +549,9 @@ static int write_whole(const char *path, const u8 *buf, long len)
     return ok;
 }
 
-/* copies <fileName>.bin/.meta from slotA/ to backup/; 1 if anything was copied */
-static int backup_entry_files(const char *fileName, const char *reason)
+/* copies <fileName>.bin/.meta from slotA/ to backup/; 1 if anything was
+ * copied (or already there); the backup's name without extension -> out */
+static int backup_entry_files(const char *fileName, const char *reason, char *out, size_t outsz)
 {
     static const char *const ext[2] = { ".bin", ".meta" };
     char src[600], dst[700], esc[CARD_FILENAME_MAX * 3 + 1];
@@ -540,6 +572,8 @@ static int backup_entry_files(const char *fileName, const char *reason)
         if (len[i] < 0)
             continue;
         snprintf(dst, sizeof(dst), "%s%s.%s-%08x%s", backup_root(), esc, reason, (unsigned)h, ext[i]);
+        if (out)
+            snprintf(out, outsz, "%s.%s-%08x", esc, reason, (unsigned)h);
         {
             FILE *t = fopen(dst, "rb");
             if (t) {            /* this exact content is already backed up */
@@ -563,7 +597,7 @@ void pc_card_backup_file(s32 chan, s32 fileNo, const char *reason)
 {
     if (chan != 0 || fileNo < 0 || fileNo >= CARD_MAX_FILE || !s_dir[fileNo].used)
         return;
-    backup_entry_files(s_dir[fileNo].fileName, reason ? reason : "bad");
+    backup_entry_files(s_dir[fileNo].fileName, reason ? reason : "bad", NULL, 0);
 }
 
 /* Called right before a create/rename writes <fileName>.bin/.meta, after the
@@ -572,7 +606,7 @@ void pc_card_backup_file(s32 chan, s32 fileNo, const char *reason)
  * unparsable .meta, an orphan .bin, another game's file), so keep a copy. */
 static void backup_stray(const char *fileName)
 {
-    backup_entry_files(fileName, "stray");
+    backup_entry_files(fileName, "stray", NULL, 0);
 }
 
 static void remove_entry_files(const char *fileName)
@@ -678,7 +712,7 @@ u16 fn_800648C8(u32 size, void *data)
 
 s32 CARDProbeEx(s32 chan, s32 *memSize, s32 *sectorSize)
 {
-    if (chan != 0)
+    if (chan != 0 || s_frozen)
         return CARD_RESULT_NOCARD;
     if (memSize) *memSize = CARD_MEM_SIZE_MBIT;
     if (sectorSize) *sectorSize = CARD_SECTOR_SIZE;
@@ -696,7 +730,7 @@ s32 CARDMountAsync(s32 chan, void *workArea, CARDCallback detachCallback, CARDCa
 {
     (void)workArea;
     (void)detachCallback; /* fired only on card removal, which never happens */
-    if (chan != 0)
+    if (chan != 0 || s_frozen)
         return FINISH(chan, CARD_RESULT_NOCARD, NULL);
     load_directory();
     s_mounted = 1;
@@ -824,6 +858,7 @@ s32 CARDCreateAsync(s32 chan, const char *fileName, u32 size, CARDFileInfo *file
     memcpy(e->company, id + 4, 2);
     e->iconAddr = 0xFFFFFFFFu;
     e->commentAddr = 0xFFFFFFFFu;
+    e->permission = CARD_ATTR_PUBLIC;   /* as the SDK's CARDCreate */
 
     /* zero-filled data file of the full size */
     entry_path(e->fileName, ".bin", path, sizeof(path));
@@ -1076,4 +1111,204 @@ s32 CARDWriteAsync(CARDFileInfo *fileInfo, const void *buf, s32 length, s32 offs
     fileInfo->offset += length;
     s_xferred[0] += length + CARD_SECTOR_SIZE; /* data + directory update */
     return FINISH(chan, CARD_RESULT_READY, cb);
+}
+
+/* ------------------------------------------------------------------ */
+/* save import/export (pc_gci.c)                                       */
+/*
+ * These work on the files on disk, not on s_dir: the game re-reads the
+ * directory on every mount, and an import is only offered while no memory
+ * card job runs (the game is restarted afterwards to read the new save).
+ */
+#include "pc_card.h"
+
+const char *pc_card_slot_dir(void) { return card_root(); }
+
+/* After an in-game import: the card reads as removed until the restart, so
+ * nothing the running game still holds in memory can be saved over the
+ * imported files. */
+void pc_card_freeze(void)
+{
+    s_frozen = 1;
+    s_mounted = 0;
+    s_result[0] = CARD_RESULT_NOCARD;
+    printf("[card] card closed until the restart (a save was imported)\n");
+}
+
+const char *pc_card_base_dir(void)
+{
+    static char base[520];
+    const char *slot = card_root();
+    size_t l = strlen(slot);
+    if (!base[0] && l >= 6 && l - 6 < sizeof(base)) {
+        memcpy(base, slot, l - 6);
+        base[l - 6] = 0;
+    }
+    return base;
+}
+
+static void entry_to_file(const CardEntry *e, int fileNo, PcCardFile *f)
+{
+    memset(f, 0, sizeof(*f));
+    memcpy(f->fileName, e->fileName, sizeof(f->fileName));
+    memcpy(f->gameName, e->gameName, 4);
+    memcpy(f->company, e->company, 2);
+    f->bannerFormat = e->bannerFormat;
+    f->time = e->time;
+    f->iconAddr = e->iconAddr;
+    f->iconFormat = e->iconFormat;
+    f->iconSpeed = e->iconSpeed;
+    f->permission = e->permission;
+    f->copyTimes = e->copyTimes;
+    f->firstBlock = e->firstBlock;
+    f->length = e->length;
+    f->commentAddr = e->commentAddr;
+    f->fileNo = fileNo;
+}
+
+int pc_card_list(PcCardFile *out, int max)
+{
+    DIR *d = opendir(card_root());
+    struct dirent *de;
+    int n = 0, i;
+
+    if (!d)
+        return 0;
+    while ((de = readdir(d)) != NULL && n < max) {
+        size_t l = strlen(de->d_name);
+        char path[600];
+        CardEntry e;
+        int no, dup = 0;
+        if (l <= 5 || strcmp(de->d_name + l - 5, ".meta") != 0)
+            continue;
+        snprintf(path, sizeof(path), "%s%s", card_root(), de->d_name);
+        if (!parse_meta(path, &e, &no))
+            continue;
+        for (i = 0; i < n; i++)
+            if (!strcmp(out[i].fileName, e.fileName))
+                dup = 1;
+        if (!dup)
+            entry_to_file(&e, no, &out[n++]);
+    }
+    closedir(d);
+    /* directory order, as the card lists them */
+    for (i = 1; i < n; i++) {
+        PcCardFile t = out[i];
+        int j = i;
+        while (j > 0 && (unsigned)out[j - 1].fileNo > (unsigned)t.fileNo) {
+            out[j] = out[j - 1];
+            j--;
+        }
+        out[j] = t;
+    }
+    return n;
+}
+
+u8 *pc_card_read(const PcCardFile *f)
+{
+    char path[600];
+    long len;
+    u8 *buf, *data;
+
+    entry_path(f->fileName, ".bin", path, sizeof(path));
+    data = read_whole(path, &len);
+    if (!data || len < 0)
+        return NULL;
+    if ((u32)len == f->length)
+        return data;
+    /* short or long .bin: what the game would read (CARDReadAsync pads
+     * with zeros) */
+    buf = (u8 *)calloc(1, f->length ? f->length : 1);
+    if (buf)
+        memcpy(buf, data, (size_t)((u32)len < f->length ? (u32)len : f->length));
+    free(data);
+    return buf;
+}
+
+int pc_card_store(const PcCardFile *f, const u8 *data, char *backup, size_t backupsz)
+{
+    PcCardFile *files;
+    CardEntry e;
+    char path[600], tmp[620];
+    int n, i, no = -1, blocks = 0, replaced = -1;
+    u8 used[CARD_MAX_FILE];
+
+    if (backup && backupsz)
+        backup[0] = 0;
+    if (!f->fileName[0] || f->length == 0 || (f->length % CARD_SECTOR_SIZE) != 0)
+        return PC_CARD_E_IO;
+    files = (PcCardFile *)malloc(sizeof(PcCardFile) * CARD_MAX_FILE);
+    if (!files)
+        return PC_CARD_E_IO;
+    n = pc_card_list(files, CARD_MAX_FILE);
+    memset(used, 0, sizeof(used));
+    for (i = 0; i < n; i++) {
+        if (!strcmp(files[i].fileName, f->fileName)) {
+            replaced = i;
+            continue;
+        }
+        blocks += (int)(files[i].length / CARD_SECTOR_SIZE);
+        if (files[i].fileNo >= 0 && files[i].fileNo < CARD_MAX_FILE)
+            used[files[i].fileNo] = 1;
+    }
+    if (replaced >= 0 && files[replaced].fileNo >= 0 && files[replaced].fileNo < CARD_MAX_FILE &&
+        !used[files[replaced].fileNo])
+        no = files[replaced].fileNo;
+    for (i = 0; no < 0 && i < CARD_MAX_FILE; i++)
+        if (!used[i])
+            no = i;
+    free(files);
+    if (no < 0)
+        return PC_CARD_E_NOENT;
+    if (blocks + (int)(f->length / CARD_SECTOR_SIZE) > CARD_USER_BLOCKS)
+        return PC_CARD_E_FULL;
+
+    /* whatever is on disk under this name (a save, or a stray .bin/.meta) */
+    entry_path(f->fileName, ".bin", path, sizeof(path));
+    {
+        FILE *t = fopen(path, "rb");
+        char mpath[600];
+        FILE *m;
+        entry_path(f->fileName, ".meta", mpath, sizeof(mpath));
+        m = fopen(mpath, "rb");
+        if (t || m) {
+            if (t) fclose(t);
+            if (m) fclose(m);
+            if (!backup_entry_files(f->fileName, "replaced", backup, backupsz))
+                return PC_CARD_E_IO;   /* never replace a save without its copy */
+        }
+    }
+
+    /* data first, via a temporary file, so a failed write leaves the old one */
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    if (!write_whole(tmp, data, (long)f->length)) {
+        remove(tmp);
+        return PC_CARD_E_IO;
+    }
+    remove(path);
+    if (rename(tmp, path) != 0) {
+        remove(tmp);
+        return PC_CARD_E_IO;
+    }
+    memset(&e, 0, sizeof(e));
+    memcpy(e.fileName, f->fileName, sizeof(e.fileName));
+    e.fileName[CARD_FILENAME_MAX] = 0;
+    e.length = f->length;
+    e.time = f->time;
+    memcpy(e.gameName, f->gameName, 4);
+    memcpy(e.company, f->company, 2);
+    e.bannerFormat = f->bannerFormat;
+    e.iconAddr = f->iconAddr;
+    e.iconFormat = f->iconFormat;
+    e.iconSpeed = f->iconSpeed;
+    e.commentAddr = f->commentAddr;
+    e.permission = f->permission;
+    e.copyTimes = f->copyTimes;
+    e.firstBlock = f->firstBlock;
+    e.used = 1;
+    if (write_meta(&e, no) != CARD_RESULT_READY)
+        return PC_CARD_E_IO;
+    printf("[card] stored %s (%u bytes, slot %d)%s%s\n", f->fileName, (unsigned)f->length, no,
+            backup && backup[0] ? ", old one backed up as " : "", backup && backup[0] ? backup : "");
+    return 0;
 }

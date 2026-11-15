@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
     }
     if (!iso) { printf("fake smb2_pc_port (installer test double)\n"); Sleep(1500); return 0; }
     if (!gd) return fail(5, "no --gamedata");
-    if (strstr(iso, "wrong")) return fail(2, "This is not Super Monkey Ball 2 (USA): disc ID GM2P8P");
+    if (strstr(iso, "wrong")) return fail(2, "This is not a GameCube disc image");
     if (strstr(iso, "corrupt")) return fail(3, "Cannot read the disc image (bad FST)");
     const long long total = 1459978240LL;
     for (int i = 0; i <= 40; i++) {

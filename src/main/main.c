@@ -8,6 +8,7 @@
 #include "gamedata.h"
 #include "install_mode.h"
 #include "pc_update.h"
+#include "pc_card.h"
 #include <SDL2/SDL_hints.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -209,6 +210,12 @@ int main(int argc, char* argv[]) {
                    "                    Extract + verify the disc into <dir> (headless)\n");
             printf("  --verify-gamedata <dir> [--progress]\n"
                    "                    Check <dir> against its manifest.txt (headless)\n");
+            printf("  --import-save <file>\n"
+                   "                    Import a GameCube save: a .gci file (Dolphin Memory\n"
+                   "                    Card Manager > Export GCI, GCMM) or a whole memory\n"
+                   "                    card image (.raw); then exit\n");
+            printf("  --export-save <folder>\n"
+                   "                    Write the game's saves as .gci files; then exit\n");
             printf("  --audio-wav <f>   Write the mixed audio output to a WAV file\n");
             printf("  --audio-null      Run audio without an output device\n");
             printf("  --button-style <s> Button prompts: auto, gc, ps, ps4, ps5, xbox or switch\n"
@@ -221,7 +228,18 @@ int main(int argc, char* argv[]) {
 
     /* install.ini next to the exe (installed mode); absent = portable */
     pc_install_init(g_save_dir_arg);
+#ifdef SMB2_LINK_GAME
+    {   /* save import/export from the command line: before the log
+         * redirect, so the result shows in the console */
+        int rc = pc_gci_cli(argc, argv);
+        if (rc >= 0)
+            return rc;
+    }
+#endif
     pc_install_setup_logs();
+#ifdef SMB2_LINK_GAME
+    pc_gci_startup();   /* memcard\import\ drop-in saves, before the game reads the card */
+#endif
 
     /* Saved settings (or first-run defaults), then command-line overrides */
     pcs_load();

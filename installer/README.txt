@@ -6,6 +6,8 @@ Nintendo GameCube. It is not affiliated with SEGA or Nintendo.
 
 You need your own Super Monkey Ball 2 GameCube disc image (USA, disc ID GM2E8P,
 .iso or .gcm). No game content is included with this program.
+Modded disc images work if the mod replaces game files (stages, textures,
+sounds); code mods (DOL edits, Gecko/AR codes) don't apply.
 
 Starting the game
 -----------------
@@ -35,6 +37,25 @@ When a new version is published, the game shows its release notes at the title s
 Setup, checks it (SHA-256) and runs it after the game has closed; Windows asks for
 administrator rights. Your saves, settings and game data are kept. "Skip this version" hides
 that version. Options > Game Screen > Updates (or F1) turns the check off or checks now.
+
+Saves from Dolphin or a GameCube memory card
+--------------------------------------------
+The memory card is the folder %APPDATA%\SMB2\installed\memcard\. The game imports
+GameCube save files (.gci) and whole memory card images (.raw); only the Super Monkey
+Ball 2 (USA, GM2E8P) game data save is used (replays and saves of other games are skipped).
+- Dolphin: Tools > Memory Card Manager > select the Super Monkey Ball 2 save > Export GCI.
+  Or use Dolphin's whole card file (MemoryCardA.USA.raw).
+- A real memory card: dump it with the GCMM homebrew on a softmodded Wii or GameCube
+  (to .raw or .gci).
+Then either:
+- Options > Game Screen > Memory card (or F1) > Import a save..., pick the file. An existing
+  save is copied to memcard\backup\ first (the game asks before replacing it). The game then
+  closes; start it again to play with the imported save.
+- or put the file in %APPDATA%\SMB2\installed\memcard\import\ and start the game; it is
+  imported and moved to import\done\.
+- or run: smb2_pc_port.exe --import-save <file>
+"Export saves..." (or smb2_pc_port.exe --export-save <folder>) writes .gci files for
+Dolphin's Memory Card Manager or for GCMM.
 
 Uninstalling
 ------------

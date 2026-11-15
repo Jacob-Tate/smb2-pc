@@ -562,6 +562,7 @@ static void parse_input_script(void) {
         else if (!strcmp(name, "ESC"))   ev->esc = 1;
         else if (!strcmp(name, "STK"))   ev->hotkey = 2;   /* Controller Sticks screen */
         else if (!strcmp(name, "UPD"))   ev->hotkey = 3;   /* Updates screen (pc_update_ui.c) */
+        else if (!strcmp(name, "MC"))    ev->hotkey = 4;   /* Memory Card screen (pc_memcard_ui.c) */
         /* Analog triggers: TL/TR = full press (0x8C, the value the game
          * treats as fully pulled), TLnnn/TRnnn = explicit 0-255 value.
          * ROW/ROWnn = alternate full L and R pulls, nn frames each (default
@@ -669,6 +670,23 @@ int8_t lbl_80081AC0[MAX_CONTROLLERS][8][2] = {
     GATE, GATE, GATE, GATE
 #undef GATE
 };
+/* 0x8000A730 / 0x8000A75C: the game data save keeps the gates (memcard_mkb2.c,
+ * save offset 0x31C, 0x40 bytes), so a stick adjustment made in Options
+ * persists.  Saves of earlier port builds hold zeros there (these were
+ * stubs); a gate is only loaded when it is one the adjustment could store
+ * (each axis point on its own side), else the current one is kept. */
+void fn_8000A730(void* dst) {
+    memcpy(dst, lbl_80081AC0, sizeof(lbl_80081AC0));
+}
+
+void fn_8000A75C(const void* src) {
+    const int8_t (*g)[8][2] = (const int8_t (*)[8][2])src;
+    int i;
+    for (i = 0; i < MAX_CONTROLLERS; i++)
+        if (g[i][0][0] > 0 && g[i][2][1] > 0 && g[i][4][0] < 0 && g[i][6][1] < 0)
+            memcpy(lbl_80081AC0[i], g[i], sizeof(lbl_80081AC0[i]));
+}
+
 /* 0x80145210: the unprocessed pads (PADRead result; the Options controller
  * screens draw from it) */
 ControllerInfo lbl_80145210[MAX_CONTROLLERS];
@@ -836,6 +854,10 @@ void process_inputs(void)
                     extern void pc_update_screen_request(void);
                     if (s_script[e].hotkey == 2) pc_stick_screen_request();
                     else if (s_script[e].hotkey == 3) pc_update_screen_request();
+                    else if (s_script[e].hotkey == 4) {
+                        extern void pc_memcard_screen_request(void);
+                        pc_memcard_screen_request();
+                    }
                     else pc_settings_overlay_request();
                 }
                 if (s_script[e].trigL) tl = s_script[e].trigL;

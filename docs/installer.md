@@ -30,12 +30,14 @@ Exit codes are the same as the `RESULT` code:
 | Code | Meaning | Examples |
 |---|---|---|
 | 0 | OK | |
-| 2 | Not SMB2, or wrong region/revision | Random file, another game, GM2P8P/GM2J8P, rev ≠ 0, Wii disc, file < 0x440 bytes |
-| 3 | Image unreadable, corrupt or unsupported | Missing file, truncated image (an FST file lies beyond EOF), unreadable FST, RVZ/WIA/CISO/GCZ/WBFS/NKit (the message says to convert it to ISO with Dolphin), a required game file missing |
+| 2 | Not a GameCube disc image | Random file, Wii disc, file < 0x440 bytes |
+| 3 | Image unreadable, corrupt or unsupported | Missing file, truncated image (an FST file lies beyond EOF), unreadable FST, RVZ/WIA/CISO/GCZ/WBFS/NKit (the message says to convert it to ISO with Dolphin) |
 | 4 | Write error or disk full | Not enough free space (checked up front, message gives MB needed/free), ENOSPC or other write failure, a file that doesn't verify after writing, the final rename fails |
 | 5 | Other | Usage error; the target exists but isn't a game data folder (non-empty, no `manifest.txt`) — refused and left untouched |
 
-**Accepted images:** plain `.iso`/`.gcm` of GM2E8P disc 0, revision 0.
+**Accepted images:** any plain `.iso`/`.gcm` GameCube disc image. The disc ID,
+revision and contents are not checked, so asset mods (which often change the
+ID) work; the ID is only logged (`[iso] <path>: disc ID ...`).
 Compressed formats (RVZ, WIA, CISO, GCZ, WBFS, NKit) are detected and rejected
 with exit code 3.
 
@@ -60,13 +62,14 @@ previously valid `<dir>` is never touched before step 4.
 - `RESULT OK`, or `RESULT ERROR 6 <message>`.
 - Exit code 6 means: `manifest.txt` is missing or incomplete, a file is
   missing, or a file has the wrong size or CRC32. It also covers
-  `sys/fst.bin` disagreeing with the manifest and a required file missing.
+  `sys/fst.bin` disagreeing with the manifest. The CRCs come from the image
+  that was extracted, so extracted mods verify like the original.
 - Exit code 5 is a usage error.
 
 ### `--gamedata "<dir>"` (normal runtime)
 
 Loads the game from an extracted folder instead of an ISO. The folder must
-pass the quick check: the manifest parses, the disc ID is GM2E8P, every
+pass the quick check: the manifest parses (any disc ID), every
 listed file exists with the listed size, and the FST is consistent with the
 manifest. The CRCs are not checked at startup.
 
@@ -312,13 +315,13 @@ work.
    3. the ISO path saved in settings.dat;
    4. the recovery flow.
 4. Portable mode: the ISO path saved in settings.dat, then the
-   disc image file dialog (asked until a usable GM2E8P image is picked;
+   disc image file dialog (asked until a readable disc image is picked;
    cancel exits with code 1). The picked path, and a working `--iso`, are
    saved as settings.dat `iso=`.
 
 All of this runs before the game window is created, so the dialog and
 message boxes can't end up behind a (fullscreen) game window. Images are
-checked like `--extract-iso` does (RVZ/NKit/other games are refused with
+checked like `--extract-iso` does (RVZ/NKit/Wii discs are refused with
 the reason).
 
 **Recovery flow:**
@@ -373,8 +376,7 @@ target. It exists for tests.
 `SMB2_DVD_TRACE=1` logs every read. Across all harness modes the game reads
 only a few hundred of the FST files (under 15% of the data), but story
 stages, other party games and replays read files the harness doesn't reach,
-so the extraction copies the complete FST tree. The 15 files read at boot are
-the required set an image must contain (`s_required[]` in gamedata.c).
+so the extraction copies the complete FST tree.
 
 The trace line includes the CRC32 of the bytes the caller received:
 

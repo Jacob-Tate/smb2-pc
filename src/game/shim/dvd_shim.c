@@ -231,6 +231,8 @@ extern void bowlingPrologue(void), bowlingEpilogue(void);
 extern void boatPrologue(void), boatEpilogue(void);
 extern void dogfightPrologue(void), dogfightEpilogue(void);
 extern void baseballPrologue(void), baseballEpilogue(void);
+extern void golfPrologue(void), golfEpilogue(void);
+void pc_test_dip_apply(void);   /* pc_launcher.c: SMB2_PC_DIP test hook */
 
 static const struct { const char *name; void (*pro)(void); void (*epi)(void); }
 s_linked_rels[] = {
@@ -244,6 +246,7 @@ s_linked_rels[] = {
     { "mkb2.boat.rel",             boatPrologue,       boatEpilogue },
     { "mkb2.dogfight.rel",         dogfightPrologue,   dogfightEpilogue },
     { "mkb2.baseball.rel",         baseballPrologue,   baseballEpilogue },
+    { "mkb2.golf2.rel",            golfPrologue,       golfEpilogue },
 };
 
 static int rel_fill_fake_header(const char *name, void *buffer, u32 size)
@@ -253,6 +256,7 @@ static int rel_fill_fake_header(const char *name, void *buffer, u32 size)
 
     unsigned i;
 
+    pc_test_dip_apply();
     for (i = 0; i < sizeof(s_linked_rels) / sizeof(s_linked_rels[0]); i++)
         if (strcmp(name, s_linked_rels[i].name) == 0) {
             pro = s_linked_rels[i].pro;

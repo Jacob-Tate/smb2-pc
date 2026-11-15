@@ -12,7 +12,7 @@
 #        attract demo, so compare sheets visually):
 #   intro menus options2 challenge howto howto2 howto_race howto_bowl
 #   race racelong raceend target targetlong targetend bowling boat dogfight
-#   baseball story memcard quit quit_cancel quit_opt quit_f1
+#   baseball golf golflaunch golfend story memcard quit quit_cancel quit_opt quit_f1
 #   quit_title quit_ms quit_title_no
 #   ALL = every mode above.  Memory-card 32<->x64 compatibility is the
 #   separate card_xarch.sh (it needs both builds).
@@ -39,7 +39,7 @@
 #   $WS/tools/memcard_pristine  a memcard/ folder to start every run from
 #                               (e.g. an empty folder, or a copy of one with saves)
 set -u
-ALL=(intro menus options2 challenge howto2 howto_race howto_bowl race racelong raceend target targetlong targetend bowling boat dogfight baseball story memcard)
+ALL=(intro menus options2 challenge howto2 howto_race howto_bowl race racelong raceend target targetlong targetend bowling boat dogfight baseball golf story memcard)
 WS=${SMB2_X64_WS:-$(cd "$(dirname "$0")/../../.." && pwd)}
 PPM=$WS/tools/ppmtool
 PRISTINE=$WS/tools/memcard_pristine
@@ -77,6 +77,15 @@ spec() {
     boat)      echo "1|$(mini 7)|200|3401";;
     dogfight)  echo "1|$(mini 8)|200|3401";;
     baseball)  echo "1|$(mini 9)|200|3401";;
+    # Monkey Golf from the real Party Game menu (golf is the 6th icon):
+    # Stroke Play, 1 player, AiAi, 18 holes, then six A/A shots
+    golf)      echo "0|1350:START,1450:START,1750:RIGHT,1850:A,2100:RIGHT,2140:RIGHT,2180:RIGHT,2220:RIGHT,2260:RIGHT,2350:A,2600:A,2800:A,3000:A,3200:A,3400:A,3600:A,4000:A,4070:A,5200:A,5270:A,6400:A,6470:A,7600:A,7670:A,8800:A,8870:A,10000:A,10070:A|200|11001";;
+    golflaunch) echo "1|$(mini 10)|200|4001";;
+    # A full golf round to the end with the DIP_TEST_TEAM debug keys (run_mode
+    # sets SMB2_PC_DIP=20000000): L+A per stroke, L+RIGHT next hole, then
+    # results, name entry (AAAAAA), ranking, Options > Game Data > Save and
+    # Options > Ranking > Party Game > Golf (frame 24400)
+    golfend)   echo "0|1350:START,1450:START,1750:RIGHT,1850:A,2100:RIGHT,2140:RIGHT,2180:RIGHT,2220:RIGHT,2260:RIGHT,2350:A,2600:A,2800:A,3000:A,4100-4300:L,4110:A,4130:A,4150:A,4170:A,4290:RIGHT,4700-4900:L,4710:A,4730:A,4750:A,4890:RIGHT,5300-5500:L,5310:A,5330:A,5350:A,5370:A,5390:A,5490:RIGHT,5900-6100:L,5910:A,5930:A,5950:A,6090:RIGHT,6500-6700:L,6510:A,6530:A,6550:A,6570:A,6690:RIGHT,7100-7300:L,7110:A,7130:A,7150:A,7170:A,7190:A,7290:RIGHT,7700-7900:L,7710:A,7730:A,7750:A,7770:A,7890:RIGHT,8300-8500:L,8310:A,8330:A,8490:RIGHT,8900-9100:L,8910:A,8930:A,8950:A,8970:A,9090:RIGHT,9500-9700:L,9510:A,9530:A,9550:A,9570:A,9590:A,9690:RIGHT,10100-10300:L,10110:A,10130:A,10150:A,10170:A,10290:RIGHT,10700-10900:L,10710:A,10730:A,10750:A,10890:RIGHT,11300-11500:L,11310:A,11330:A,11350:A,11490:RIGHT,11900-12100:L,11910:A,11930:A,11950:A,11970:A,12090:RIGHT,12500-12700:L,12510:A,12530:A,12550:A,12570:A,12590:A,12690:RIGHT,13100-13300:L,13110:A,13130:A,13150:A,13290:RIGHT,13700-13900:L,13710:A,13730:A,13750:A,13770:A,13890:RIGHT,14300-14500:L,14310:A,14330:A,14350:A,14370:A,14490:RIGHT,14800:A,14920:A,15040:A,15160:A,15280:A,15400:A,15520:A,15640:A,15760:A,15880:A,16000:A,16120:A,16240:A,16360:A,16480:A,17000:B,17250:B,17500:B,17750:B,18000:B,18300:RIGHT,18450:A,18750:DOWN,18900:A,19200-19206:SD,19400:A,19800:A,20100:B,20350:UP,20500:RIGHT,20600:RIGHT,20750:A,21050:DOWN,21250:A,21550:RIGHT,21700:RIGHT,21850:RIGHT,22000:RIGHT,22150:RIGHT,22300:RIGHT,22450:RIGHT,22600:RIGHT,22750:RIGHT,22900:RIGHT,23050:RIGHT,23200:RIGHT,23350:RIGHT,23500:RIGHT,23650:RIGHT,23800:RIGHT,23950:RIGHT|200|24501";;
     # story: real menus (START at 500 skips the attract demo) -> Main Game ->
     # Story Mode -> Data Select slot 1 -> Name Entry: A types "A", START jumps
     # to END, A confirms -> the opening cutscene (scndat_SCENE1A + dlg/scn1a,
@@ -129,7 +138,8 @@ run_mode() { # label bindir mode extra...
   [ "$SCRIPT" != "-" ] && args+=(--input-script "$SCRIPT")
   local try
   for try in 1 2 3; do
-    ( cd "$bin" && SMB2_PC_LAUNCHER=$L WSLENV=SMB2_PC_LAUNCHER:SMB2_PC_STAGE:SMB2_RENDERER:SMB2_HEAP_CHECK:SMB2_HFR_DEBUG:SMB2_HFR_FIXED:SMB2_HFR_DEBUG_FULL:SMB2_HFR_PROFILE:SMB2_HFR_DEFER:SMB2_HFR_SWITCH:SMB2_HFR_DEBUG2:SMB2_UPDATE_TEST:SMB2_UPDATE_TEMP:SMB2_UPDATE_DRYRUN timeout 600 ./smb2_pc_port.exe "${args[@]}" "$@" > "$out/log.txt" 2>&1; echo "exit $?" >> "$out/log.txt" )
+    local dip=${SMB2_PC_DIP:-}; [ "$mode" = golfend ] && dip=20000000
+    ( cd "$bin" && SMB2_PC_DIP=$dip SMB2_PC_LAUNCHER=$L WSLENV=SMB2_PC_DIP:SMB2_PC_GOLF_WIND:SMB2_PC_LAUNCHER:SMB2_PC_STAGE:SMB2_RENDERER:SMB2_HEAP_CHECK:SMB2_HFR_DEBUG:SMB2_HFR_FIXED:SMB2_HFR_DEBUG_FULL:SMB2_HFR_PROFILE:SMB2_HFR_DEFER:SMB2_HFR_SWITCH:SMB2_HFR_DEBUG2:SMB2_UPDATE_TEST:SMB2_UPDATE_TEMP:SMB2_UPDATE_DRYRUN timeout 600 ./smb2_pc_port.exe "${args[@]}" "$@" > "$out/log.txt" 2>&1; echo "exit $?" >> "$out/log.txt" )
     # WSL interop sometimes fails to start the Windows process at all
     # ("UtilAcceptVsock: accept4 failed"): retry those, nothing else
     grep -aq 'main() started' "$out/log.txt" && break

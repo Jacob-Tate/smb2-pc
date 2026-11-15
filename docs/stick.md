@@ -56,7 +56,9 @@ push into a large sideways tilt, so the PC port reproduces it exactly.
    the DOL's tables. It runs at the end of `input_poll_gc_pads`, so the game
    and the PC overlays both see processed values. `lbl_80145210`,
    `lbl_80081AC0` and `fn_8000A380` are real data/code on PC, so the game's
-   Control Stick adjustment works too.
+   Control Stick adjustment works too. As on the GC, the game data save keeps
+   the gates (`fn_8000A730`/`fn_8000A75C`, save offset 0x31C); saves of builds
+   before 1.1.2 have zeros there, which are not loaded.
 
 The keyboard (WASD) gives a full octagon deflection: 101 at the cardinals and
 (71, 71) at the diagonals.

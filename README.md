@@ -12,6 +12,10 @@ the GameCube hardware and SDK. It is **not an emulator**.
 own. This repository contains **no game assets** (no textures, models, audio
 or disc files). The game data is read from your disc image at run time.
 
+Modded disc images work if the mod replaces game files (stages, textures,
+sounds); code mods (DOL edits, Gecko/AR codes) don't apply, because the port
+runs its own compiled code instead of the disc's `main.dol`.
+
 ## Features
 
 - Story Mode, Challenge Mode, Practice, options, memory-card saves and
@@ -93,7 +97,7 @@ is GameCube A); Nintendo pads are mapped by label, as in Nintendo's own ports.
 
 In game: Options > Game Screen (resolution, fullscreen, aspect, frame rate,
 vsync, MSAA, renderer, language, button prompts, volume, controllers,
-updates) or the F1 overlay, which also shows the version. The Updates row
+updates, memory card) or the F1 overlay, which also shows the version. The Updates row
 opens a screen with "Check automatically" (On by default; at most once a
 day, only the version number is sent) and "Check now".
 They are stored in `settings.dat`. Command-line options override them for one
@@ -108,7 +112,44 @@ run; `smb2_pc_port.exe --help` lists them all, the main ones:
 --language auto|en|de|fr|es|it|ja
 --button-style auto|gc|ps|ps4|ps5|xbox|switch
 --save-dir <dir>      folder for settings.dat and the memory card
+--import-save <file>  import a .gci save or a .raw memory card image, then exit
+--export-save <dir>   write the saves as .gci files, then exit
 ```
+
+### Saves: importing from Dolphin or a GameCube memory card
+
+The memory card is a folder: `memcard\` next to the exe (portable zip) or
+`%APPDATA%\SMB2\installed\memcard\` (installer). The port reads standard
+GameCube save files (`.gci`) and whole memory card images (`.raw`), and
+imports the Super Monkey Ball 2 (USA, GM2E8P) game data save, converted to the
+port's byte order; saves of other games on a card are listed as skipped.
+Replays are not converted. Saves from the European or Japanese version can't
+be used.
+
+1. Get the save:
+   - **Dolphin**: Tools > Memory Card Manager, select the Super Monkey Ball 2
+     save, Export GCI. Or use the whole card file instead (Dolphin's
+     `User\GC\USA\Card A\` folder in GCI folder mode already holds
+     `.gci` files; a raw card is `MemoryCardA.USA.raw`).
+   - **A real memory card**: dump it with the GCMM homebrew on a softmodded Wii
+     or GameCube, either the whole card (`.raw`) or the single save (`.gci`).
+2. Import it, any of:
+   - In game: Options > Game Screen > Memory card (or F1 > Memory card) >
+     Import a save..., pick the file. Allowed on the title screen and in the
+     menus. If you already have a save, the game asks before replacing it and
+     keeps a copy in `memcard\backup\`. The game then closes; start it again
+     to play with the imported save.
+   - Drop-in: put the `.gci` / `.raw` in `memcard\import\` and start the game.
+     It is imported before the game reads the card (a save it replaces is
+     copied to `memcard\backup\`), the title screen says what happened, and
+     the file moves to `import\done\` (or `import\failed\`).
+   - Command line: `smb2_pc_port.exe --import-save <file.gci|card.raw>`
+     (prints the result and exits).
+
+To go the other way (back to Dolphin or a real card): Memory card > Export
+saves..., or `smb2_pc_port.exe --export-save <folder>`. This writes `.gci`
+files: import them in Dolphin's Memory Card Manager (or drop them into its GCI
+folder), or copy them to a real card with GCMM.
 
 ## Building from source
 

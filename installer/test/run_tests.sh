@@ -289,7 +289,14 @@ check "old-name saves/settings removed" [ ! -e "$OLDUD" ]
 check "portable build's settings (AppData\\SMB2\\smb2_pc_port) kept" [ -f "$ROOT/AppData/SMB2/smb2_pc_port/settings.dat" ]
 clean
 
-for t in "wrong_game:12" "corrupt:13" "diskfull:14" "pal:12"; do
+echo "== 6a. other disc ID (region/mod): accepted like the original"
+setup "/ISO=$WI\\pal.iso"
+check "exit 0" [ "$RC" = 0 ]
+check "game data extracted" [ -e "$GD/manifest.txt" ]
+uninstall
+clean
+
+for t in "wrong_game:12" "corrupt:13" "diskfull:14"; do
     n=${t%%:*}; want=${t##*:}
     echo "== 6. extraction error: $n.iso -> setup exit $want"
     setup "/ISO=$WI\\$n.iso"

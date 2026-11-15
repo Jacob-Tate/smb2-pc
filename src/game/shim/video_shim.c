@@ -298,6 +298,15 @@ void video_finish_frame(void)
                    frame_no, b->px, b->py, b->pz, b->vx, b->vy, b->vz);
         }
     }
+    /* test hook: SMB2_PC_ROLL=1 switches a game in its READY phase to the staff
+     * roll (SMD_GAME_READY_MAIN -> SMD_GAME_ROLL_INIT), like a Gecko code on Dolphin */
+    {
+        static int roll = -1;
+        extern s32 main_mode, sub_mode, sub_mode_request;
+        if (roll < 0) roll = getenv("SMB2_PC_ROLL") && atoi(getenv("SMB2_PC_ROLL")) > 0;
+        if (roll && main_mode == 2 && sub_mode == 0x31)
+            sub_mode_request = 0x53;
+    }
     /* once-a-second heartbeat so logs show where the game is */
     {
         extern s32 main_mode, sub_mode, main_mode_request, sub_mode_request;
@@ -360,6 +369,10 @@ void video_finish_frame(void)
         extern int pc_update_ui_run_requested(void);
         pc_update_poll();
         if (g_gx_presents_frames && pc_update_ui_run_requested())
+            s_hfr_skip = 1;
+        /* Memory Card screen (Options page) / drop-in import notice */
+        extern int pc_memcard_ui_run_requested(void);
+        if (g_gx_presents_frames && pc_memcard_ui_run_requested())
             s_hfr_skip = 1;
     }
     /* gx_start_new_frame (GXCopyDisp) presents on PC once the game's render

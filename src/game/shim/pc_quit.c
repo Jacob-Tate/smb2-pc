@@ -22,6 +22,7 @@ struct TextBox;
 #include "pc_quit.h"
 #include "pc_text.h"
 #include "pc_update.h"
+#include "pc_memcard_ui.h"
 
 extern u32 fn_1_C2478(void);                /* hud.c: yes/no cursor flash */
 extern int pc_memcard_io_busy(void);        /* memcard.c (PC-only) */
@@ -233,6 +234,12 @@ int pc_menu_quit_tick(int where, int can_open, unsigned int open_buttons)
                where == PCMQ_TITLE ? "title screen" : "Mode Select");
         fflush(stdout);
         pc_update_notes_request();
+        return -1;
+    }
+    /* saves imported from memcard/import/ at startup: say so, same moment */
+    if (can_open && s_menu_where != where && !pc_quit_requested() && !pc_quit_confirm_active() &&
+        !memcard_busy() && pc_memcard_notice_pending()) {
+        pc_memcard_notice_request();
         return -1;
     }
     if (s_menu_where == where && !pc_quit_confirm_active())

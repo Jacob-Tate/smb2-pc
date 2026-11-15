@@ -96,6 +96,7 @@ enum {
     PCS_ITEM_LANGUAGE,
     PCS_ITEM_CONTROLLERS,   /* opens the Controller Sticks screen (pc_stick_menu.c) */
     PCS_ITEM_UPDATES,       /* opens the Updates screen (pc_update_ui.c) */
+    PCS_ITEM_MEMCARD,       /* opens the Memory Card screen (pc_memcard_ui.c) */
     PCS_ITEM_COUNT
 };
 const char* pcs_item_name(int item);

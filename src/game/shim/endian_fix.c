@@ -946,7 +946,7 @@ static void sd_traverse(struct StageDef *sd)
         struct StageExtraAnims *ea = sd_ptr(&sd->extraAnims);
 
         if (ea != NULL) {
-            /* ea->unk0 (0xC bytes) is unknown; left untouched */
+            sdw32n(&ea->cupPos, 3);   /* golf cup position (floats) */
             sdw32n(&ea->animA, 2);
             sd_itemgroup_anim(&ea->animA);
             sd_itemgroup_anim(&ea->animB);

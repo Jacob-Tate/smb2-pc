@@ -23,28 +23,6 @@
 #define PARTIAL_MARKER ".smb2-extract-partial"
 #define CHUNK (4u << 20)
 
-/* Files the port cannot run without (DVDOpen'd by the boot/menus/game
- * modes, first ones read at boot; docs/installer.md "What the port reads").  A disc whose FST
- * lacks one is not a usable SMB2 image even if the ID matches. */
-static const char* const s_required[] = {
-    "/memcard/sys.bin",
-    "/font/fnt_asc_24x24.bin",
-    "/init/common.gma",
-    "/init/common.tpl",
-    "/init/common.lz",
-    "/init/common_p.lz",
-    "/bmp/bmp_com.lz",
-    "/ape/skl.arc",
-    "/stgname/usa.str",
-    "/snd/mkb/allse.pool",
-    "/snd/mkb/allse.proj",
-    "/snd/mkb/allse.sdir",
-    "/snd/mkb/allse.samp",
-    "/mkb2.sel_ngc.rel",
-    "/mkb2.main_game.rel",
-    NULL,
-};
-
 /* ------------------------------------------------------------------ util */
 uint32_t gd_crc32(uint32_t crc, const void* data, size_t n)
 {
@@ -334,11 +312,7 @@ static bool man_read(GdManifest* m, const char* dir, char* msg, size_t msgsz)
         man_free(m);
         return false;
     }
-    if (strcmp(m->disc_id, "GM2E8P") != 0) {
-        setmsg(msg, msgsz, "game data in %s is %s, not GM2E8P", dir, m->disc_id);
-        man_free(m);
-        return false;
-    }
+    /* any disc id: extracted mods keep theirs (the CRCs come from that image) */
     return true;
 }
 
@@ -366,7 +340,8 @@ static int64_t file_size64(FILE* f)
 #endif
 }
 
-/* Identify the image; fills hdr.  Returns GD_OK or an error code + msg. */
+/* Can the port read this image?  Fills hdr.  Returns GD_OK with the disc
+ * ID/name in msg, or an error code + the reason. */
 static int check_image(const char* iso, uint8_t hdr[0x440], int64_t* out_size,
                        char* msg, size_t msgsz)
 {
@@ -402,25 +377,9 @@ static int check_image(const char* iso, uint8_t hdr[0x440], int64_t* out_size,
     }
     if (be32(hdr + 0x1C) != 0xC2339F3Du) {
         if (be32(hdr + 0x18) == 0x5D1C9EA3u)
-            setmsg(msg, msgsz, "%s is a Wii disc (%.6s), not Super Monkey Ball 2 (GM2E8P)", iso, hdr);
+            setmsg(msg, msgsz, "%s is a Wii disc (%.6s), not a GameCube disc image", iso, hdr);
         else
             setmsg(msg, msgsz, "%s is not a GameCube disc image", iso);
-        return GD_ERR_NOT_SMB2;
-    }
-    if (memcmp(hdr, "GM2E8P", 6) != 0) {
-        char name[65];
-        snprintf(name, sizeof name, "%.64s", (const char*)hdr + 0x20);
-        if (!memcmp(hdr, "GM2", 3))
-            setmsg(msg, msgsz, "this is Super Monkey Ball 2 for region '%c' (%.6s); "
-                   "only the North American release GM2E8P is supported", hdr[3], hdr);
-        else
-            setmsg(msg, msgsz, "this disc is '%s' (%.6s), not Super Monkey Ball 2 (GM2E8P)",
-                   name, hdr);
-        return GD_ERR_NOT_SMB2;
-    }
-    if (hdr[6] != 0 || hdr[7] != 0) {
-        setmsg(msg, msgsz, "unsupported GM2E8P disc %d revision %d (only disc 0 rev 0 is known)",
-               hdr[6], hdr[7]);
         return GD_ERR_NOT_SMB2;
     }
     if (!memcmp(nk, "NKIT", 4)) {
@@ -434,6 +393,10 @@ static int check_image(const char* iso, uint8_t hdr[0x440], int64_t* out_size,
         setmsg(msg, msgsz, "%s is truncated or corrupt (FST outside the image)", iso);
         return GD_ERR_IMAGE;
     }
+    /* ID, revision and contents are not checked: asset mods often change
+     * them and the user decides what to play.  Only reported. */
+    setmsg(msg, msgsz, "disc ID %.6s, \"%.64s\", disc %d rev %d", (const char*)hdr,
+           (const char*)hdr + 0x20, hdr[6], hdr[7]);
     return GD_OK;
 }
 
@@ -577,15 +540,6 @@ static int gamedata_extract_(const char* iso, const char* dir, GdProgressFn cb, 
             goto out;
         }
         data_bytes += e->size;
-    }
-    for (i = 0; s_required[i]; i++) {
-        int e = iso_path_to_index(arc, s_required[i]);
-        if (e < 0 || iso_entry_is_dir(arc, e)) {
-            setmsg(msg, msgsz, "%s: required game file %s is missing (modified or corrupt image)",
-                   iso, s_required[i]);
-            rc = GD_ERR_IMAGE;
-            goto out;
-        }
     }
     /* game icon from /memcard/sys.bin (best effort: a disc without it
      * still extracts; the manifest then has no icon lines) */
@@ -820,14 +774,6 @@ static int check_structure(const char* dir, const GdManifest* m, char* msg, size
     n = iso_entry_count(arc);
     for (i = 1; i < n; i++) if (!iso_entry_is_dir(arc, i)) files++;
     for (i = 0; i < m->count; i++) if (!strncmp(m->files[i].path, "files/", 6)) listed++;
-    for (i = 0; s_required[i]; i++) {
-        int e = iso_path_to_index(arc, s_required[i]);
-        if (e < 0) {
-            iso_close(arc);
-            setmsg(msg, msgsz, "%s: required game file %s missing from the FST", dir, s_required[i]);
-            return GD_ERR_MISMATCH;
-        }
-    }
     iso_close(arc);
     if (files != listed) {
         setmsg(msg, msgsz, "%s: FST has %d files but the manifest lists %d", dir, files, listed);

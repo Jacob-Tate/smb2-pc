@@ -25,6 +25,20 @@ extern s16 g_another_stage_id;
 extern s32 active_monkey_id;
 extern u32 g_some_other_flags;
 extern u32 g_font_char_var_3;
+/* include/baseball.h (it can't be included here: conflicting prototypes) */
+struct PauseMenuState
+{
+    s32 timer;
+    u32 flags;
+    s32 selection;
+    s32 itemCount;
+    s32 menuType;
+    s8 padId;
+    s8 playerId;
+    s16 unk16;
+    s8 screenshotState;
+};
+extern struct PauseMenuState g_related_to_pause_menu_input;
 extern u8 lbl_1_bss_172C[];  /* sel.c struct SelSettingsH: baseball settings */
 
 void g_set_some_sel_ngc_global_func_ptrs(void (*a)(void), void (*b)(void),
@@ -63,6 +77,7 @@ static const struct LauncherEntry s_entries[] = {
     { L_MINI, "MONKEY BOAT",     0xC1, 10 },
     { L_MINI, "MONKEY DOGFIGHT", 0xC7, 13 },
     { L_MINI, "MONKEY BASEBALL", 0xC9, 15 },
+    { L_MINI, "MONKEY GOLF",     0xBB, 8 },
 };
 #define N_ENTRIES ((int)(sizeof(s_entries) / sizeof(s_entries[0])))
 
@@ -86,6 +101,8 @@ static void launcher_set_single_player(void)
     disable_all_cameras();
     active_monkey_id = 0;
 }
+
+void pc_test_dip_apply(void);
 
 static void launcher_start(const struct LauncherEntry *e)
 {
@@ -165,10 +182,26 @@ static void launcher_start(const struct LauncherEntry *e)
          * pick mode 1 (1P vs COM). */
         if (e->arg1 == 15)
             lbl_1_bss_172C[0] = 1;
+        /* the flags sel_ngc's menu_start_golf sets */
+        if (e->arg1 == 8) {
+            modeCtrl.courseFlags |= 4;
+            g_related_to_pause_menu_input.flags &= ~2u;
+        }
         break;
     }
     s_started = 1;
     dip_switches &= ~DIP_DISP;
+    pc_test_dip_apply();
+}
+
+/* test hook: SMB2_PC_DIP=<hex> ORs debug DIP switches in (e.g. 20000000 =
+ * DIP_TEST_TEAM: Monkey Golf's L+A stroke count and L+RIGHT next hole, for
+ * scripted full rounds).  Applied at launcher starts and at every REL load
+ * (dvd_shim.c), so it also works through the real menus. */
+void pc_test_dip_apply(void)
+{
+    if (getenv("SMB2_PC_DIP"))
+        dip_switches |= (u32)strtoul(getenv("SMB2_PC_DIP"), NULL, 16);
 }
 
 static void launcher_tick(void)
@@ -236,4 +269,19 @@ void pcLauncherPrologue(void)
 
 void pcLauncherEpilogue(void)
 {
+}
+
+/* test hook: SMB2_PC_GOLF_WIND=<angle>,<velocity> replaces Monkey Golf's random
+ * wind of each hole (s16 angle units, velocity as golf_wind_velocity), for
+ * comparing single shots with Dolphin (rand() state differs between runs) */
+extern s32 golf_wind_angle;
+extern float golf_wind_velocity;
+void pc_golf_test_wind(void)
+{
+    const char *e = getenv("SMB2_PC_GOLF_WIND");
+    if (e) {
+        golf_wind_angle = atoi(e);
+        e = strchr(e, ',');
+        golf_wind_velocity = e ? (float)atof(e + 1) : 0.0f;
+    }
 }

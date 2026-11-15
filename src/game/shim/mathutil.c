@@ -1315,6 +1315,21 @@ void g_math_unk7(Quat *quat, float radius, Vec *out, Vec *in)
 }
 
 /* 0x80064820: project point through MTXA to normalized screen coords */
+/* DOL 0x80064738: like g_math_unk19, but to 640x480 screen pixels; points
+ * behind/at the eye plane or off screen give 10000 in both. */
+void g_math_unk18(Vec *pos, float *out, float tanHalfFov, float aspect)
+{
+    mtxa_tf_point(pos, (Vec *)out);
+    if (fabs(out[2]) > 1.1920928955078125e-07) {
+        float s = 240.0f / (out[2] * tanHalfFov);
+        out[0] = 320.0f + (1.3333334f * (-out[0] * s)) / aspect;
+        out[1] = 240.0f + out[1] * s;
+        if (out[0] < 640.0f && out[0] > 0.0f && out[1] < 480.0f && out[1] > 0.0f)
+            return;
+    }
+    out[0] = out[1] = 10000.0f;
+}
+
 void g_math_unk19(Vec *pos, float *out, float tanHalfFov, float aspect)
 {
     mtxa_tf_point(pos, (Vec *)out);
