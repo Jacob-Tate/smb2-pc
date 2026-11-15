@@ -791,8 +791,10 @@ static void sd_traverse(struct StageDef *sd)
     s32 i, n;
 
     /* StageDef header: all fields are 32-bit floats/counts/offsets except
-     * bgTheme (s8, 0xA4) and the unknown byte regions 0x6C and 0xA5 */
-    sdw32n(&sd->loopStart, 27);         /* 0x00..0x68 */
+     * bgTheme (s8, 0xA4) and the unknown byte region 0xA5.  0x6C is the
+     * s32 start position count (1; 9 in Monkey Race 131-140, 4 in Monkey
+     * Boat 143-148), read as *(s32 *)unk6C by race2_0.c and boat_2.c. */
+    sdw32n(&sd->loopStart, 28);         /* 0x00..0x6C */
     sdw32n(&sd->reflectiveCount, 13);   /* 0x70..0xA0 */
     sdw32n(&sd->buttonCount, 12);       /* 0xA8..0xD4 */
 
@@ -808,12 +810,10 @@ static void sd_traverse(struct StageDef *sd)
         struct StartPos *sp = sd_ptr(&sd->startPos);
 
         if (sp != NULL) {
-            /* Monkey Race stages (STAGE133-138) carry one start position
-             * per racer (9 entries: 8 players + 1; race2 fn_10_488 indexes
-             * startPos[pc-id-1]).  The count is the low byte of the 0x6C
-             * header word (0x20202009; 0x..01 for ordinary stages), bounded
-             * by the falloutY block that directly follows the array. */
-            s32 cnt = sd->unk6C[3];
+            /* Race and Boat stages carry several start positions; the
+             * count is the 0x6C word, bounded by the falloutY block that
+             * directly follows the array. */
+            s32 cnt = *(s32 *)sd->unk6C;
             float *fy = sd_ptr(&sd->falloutY);
 
             if (cnt < 1 || cnt > 16)

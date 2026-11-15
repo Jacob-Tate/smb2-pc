@@ -377,6 +377,31 @@ if(SMB2_GAME)
         endforeach()
     endif()
 
+    # Test build: report out-of-bounds array indexing and accesses past the
+    # end of a known object (the "GC globals are adjacent" overrun class:
+    # GC code indexing past one array into the next symbol).  Recover mode, handlers in pc_ubsan_rt.c log
+    # "[oob]" lines to stderr; no sanitizer runtime is linked.
+    option(SMB2_SANITIZE_BOUNDS "Instrument game code with array-bounds/object-size checks (test builds)" OFF)
+    if(SMB2_SANITIZE_BOUNDS)
+        if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+            set(SMB2_SAN_FLAGS -fsanitize=array-bounds,object-size)
+        else()
+            set(SMB2_SAN_FLAGS -fsanitize=bounds,object-size)
+        endif()
+        # only [] / [0] / [1] trailing members count as flexible arrays
+        list(APPEND SMB2_SAN_FLAGS -fsanitize-recover=all -fstrict-flex-arrays=1)
+        foreach(t smb2_game smb2_shim)
+            target_compile_options(${t} PRIVATE ${SMB2_SAN_FLAGS})
+            target_compile_definitions(${t} PRIVATE SMB2_SANITIZE_BOUNDS)
+        endforeach()
+        set_source_files_properties(${CMAKE_SOURCE_DIR}/src/game/shim/pc_ubsan_rt.c
+            PROPERTIES COMPILE_OPTIONS "-fno-sanitize=all")
+        if(CMAKE_CROSSCOMPILING AND CMAKE_C_COMPILER MATCHES "i686")
+            # fixed load address so reported pointers match nm output
+            target_link_options(smb2_pc_port PRIVATE -Wl,--disable-dynamicbase)
+        endif()
+    endif()
+
     # game <-> shim reference each other; CMake repeats cyclic static libs
     target_link_libraries(smb2_game smb2_shim)
     target_link_libraries(smb2_shim smb2_game)

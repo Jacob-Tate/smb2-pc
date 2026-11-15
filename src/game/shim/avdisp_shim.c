@@ -442,6 +442,16 @@ GXTexObj *g_init_gma_model_materials(struct GMAModel *model, struct TPL *tpl,
         }
         for (i = 0; i < model->tevLayerCount; i++) {
             layers[i].texObj = &model->texObjs[i];  /* stw at layer+0x08 */
+            if (layers[i].texIndex >= tpl->numTextures) {
+                /* PC: a layer naming a texture the TPL doesn't have (0xFFFF in
+                 * some community stages' hidden [NODISP] models).  The GC reads
+                 * a header past the table and inits a never-drawn texture from
+                 * it; hashing texels at that wild address crashed here, so the
+                 * layer gets the empty texture instead. */
+                GXInitTexObj(layers[i].texObj, 0, 8, 8, 6 /* RGBA8 */, 0, 0, 0);
+                layers[i].imageData = 0;
+                continue;
+            }
             /* asm: r4 = tpl->texHeaders + (texIndex << 4), r5 = tpl */
             g_init_gma_texture(&layers[i], &tpl->texHeaders[layers[i].texIndex],
                                tpl);
