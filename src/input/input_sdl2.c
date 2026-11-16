@@ -35,8 +35,11 @@ uint16_t analog_inputs[MAX_CONTROLLERS][5] = {0};
  * (lbl_1_bss_70F00[10]) right behind it as one object (boat reads [0..7]),
  * so the single definition must hold all 4 + 10 entries. */
 int32_t player_pad_map[4 + 10] = {0, 1, 2, 3};
-uint16_t merged_digital_inputs[MAX_CONTROLLERS] = {0};
-uint16_t merged_analog_inputs[MAX_CONTROLLERS] = {0};
+/* held / previous / pressed / released / repeat, as the game indexes them
+ * (0xC bytes each in the DOL); with 4 entries [4] of the digital one landed
+ * on the analog one's [0] and the held stick directions were lost */
+uint16_t merged_digital_inputs[6] = {0};
+uint16_t merged_analog_inputs[6] = {0};
 int32_t frames_since_last_input_change[MAX_CONTROLLERS] = {0};
 
 /* One GC pad port */

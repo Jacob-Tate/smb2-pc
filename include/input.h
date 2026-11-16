@@ -49,8 +49,8 @@ typedef struct {
 extern ControllerInfo pad_status_groups[MAX_CONTROLLERS];
 extern uint16_t analog_inputs[MAX_CONTROLLERS][5];
 extern int32_t player_pad_map[4 + 10];  /* + the idle-chatter counters (input_sdl2.c) */
-extern uint16_t merged_digital_inputs[MAX_CONTROLLERS];
-extern uint16_t merged_analog_inputs[MAX_CONTROLLERS];
+extern uint16_t merged_digital_inputs[6];
+extern uint16_t merged_analog_inputs[6];
 extern int32_t frames_since_last_input_change[MAX_CONTROLLERS];
 
 /* Input system API */
