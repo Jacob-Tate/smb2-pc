@@ -31,7 +31,10 @@
 /* Global state matching original game */
 ControllerInfo pad_status_groups[MAX_CONTROLLERS] = {0};
 uint16_t analog_inputs[MAX_CONTROLLERS][5] = {0};
-int32_t player_pad_map[MAX_CONTROLLERS] = {0, 1, 2, 3};
+/* The game's player -> pad table.  ball.c keeps the GC idle-chatter counters
+ * (lbl_1_bss_70F00[10]) right behind it as one object (boat reads [0..7]),
+ * so the single definition must hold all 4 + 10 entries. */
+int32_t player_pad_map[4 + 10] = {0, 1, 2, 3};
 uint16_t merged_digital_inputs[MAX_CONTROLLERS] = {0};
 uint16_t merged_analog_inputs[MAX_CONTROLLERS] = {0};
 int32_t frames_since_last_input_change[MAX_CONTROLLERS] = {0};
