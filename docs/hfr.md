@@ -134,6 +134,7 @@ per pair).
 | `HFR_TAG(STOBJ, index)` | stobj.c `g_draw_stobjs` | goal bags, bumpers, ... |
 | `HFR_TAG(EFFECT, uid)` | effect.c `g_draw_effects` | particles: spawn / die without order shifts |
 | `HFR_TAG(STAGE_IG, i)` | stage_draw.c `g_draw_stage_models` | animated stage parts per item group |
+| `HFR_TAG(BG, ...)` | bg_lava.c embers, bg_wat2.c ambient particles, bg_pot.c bubbles | camera-space quads that all look alike: without a tag a particle that appears / disappears shifts the nearest-first pairing, and an in-between frame sweeps sparks between neighbours several units apart |
 | `HFR_NODE_ALLOC/BEGIN/END` | ord_tbl.c | depth-sorted draws (drawn later, in another order) keep the tag they were queued under |
 | `HFR_VIEW(cam, view)` | camera.c `camera_apply_viewport[_2]`, default projection | camera view per tick: cut when it turns > 43 deg or moves more than 3x its speed + 3 units in one tick |
 | `HFR_CUT(CAMERA_RESET)` | camera.c `camera_clear` | stage start, respawn, replay / mode camera resets.  Soft: cuts only if a camera view then moved more than 1.5x its recent speed + 0.5 units or turned > 10 deg (baseball's intro pan resets its camera every tick while panning smoothly) |
@@ -291,3 +292,13 @@ replays run no game code and never touch gx_core state the game reads
   interpolated (ambiguous direction); a fast-rolling ball's texture can
   alias at 60 Hz anyway.
 * The `[hfr]` statistics line is printed every 5 s while HFR is on.
+* V-Sync on a fixed-refresh display when only one in-between frame fits per
+  tick (4K, MSAA 8x: ~7.5 ms of logic + recording, ~5 ms GPU per frame):
+  frames are shown on the display's refresh grid, typically 3 refreshes of
+  the tick frame and 1 of the in-between frame, whose phase is taken at its
+  GPU start (~0.6) rather than its display time (0.75), and in a loaded
+  system some ticks get no in-between frame at all.  Scrolling surfaces (the
+  lava falls) then judder at 60 Hz.  The display time is not predictable
+  from the vblank grid alone (DXGI frame statistics show 2-3 refreshes of
+  queue latency that differ between frames); fixing it needs per-present
+  display feedback or a waitable, latency-1 swap chain.

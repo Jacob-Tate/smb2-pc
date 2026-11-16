@@ -321,9 +321,12 @@ static uint64_t sdl2_get_time_ns(PlatformContext* ctx) {
     SDL2BackendData* data = (SDL2BackendData*)ctx->backend_data;
     if (!data) return 0;
 
-    uint64_t now = SDL_GetPerformanceCounter();
+    /* whole seconds and the remainder apart: ticks * 1e9 overflows 64 bits
+     * after 30.7 minutes at the usual 10 MHz counter, the clock then jumped
+     * back and the 60 Hz pacer waited for the lost half hour (a freeze) */
+    uint64_t ticks = SDL_GetPerformanceCounter() - data->start_ticks;
     uint64_t freq = SDL_GetPerformanceFrequency();
-    return ((now - data->start_ticks) * 1000000000ULL) / freq;
+    return (ticks / freq) * 1000000000ULL + ((ticks % freq) * 1000000000ULL) / freq;
 }
 
 static uint64_t sdl2_get_ticks_ms(PlatformContext* ctx) {
