@@ -33,7 +33,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | P0.2 | WSL toolchain + decomp + SDL2 deps | – | env | DONE (2026-11-17) |
 | P0.3 | `tools/win_build.sh` wrapper + smoke test | P0.2 | build | DONE (fa5fad2) |
 | P0.4 | Headless test harness doc + smoke scripts | P0.3 | tools | IN PROGRESS (task/P0.4, 2026-11-17) |
-| A1 | Default to windowed instead of fullscreen | P0.3 | settings | IN PROGRESS (task/A1, 2026-11-17) |
+| A1 | Default to windowed instead of fullscreen | P0.3 | settings | REVIEW (merged 81bb9a9; user visual check pending) |
 | B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | IN PROGRESS (task/B1, 2026-11-17) |
 | B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | TODO |
 | B3 | RVZ in dialogs, installer, help text, gamedata.c | B2 | disc+installer | TODO |
@@ -663,3 +663,7 @@ Candidate fixes (choose from C1's results; likely several):
 - E1 DONE: lockstep is feasible; summary in §6 "E1 results".
 - Launched in parallel (Sonnet, worktrees): C2b, P0.4, A1, B1, E5. The Agent tool's worktree isolation
   failed, so the worktrees were made by hand under `super_monkey/wt/<ID>` (see §3.1).
+- A1 merged (81bb9a9): `set_defaults()` → `PCS_WINDOWED`; verified fresh `--save-dir` → windowed 1600x900,
+  `display=windowed`. Note: `--exit-frame`/`--input-script` force windowed unless `--fullscreen` is given.
+  **User check (REVIEW):** delete or move `settings.dat`, start the game → centred window with a title bar;
+  Alt+Enter toggles borderless; Options > Game Screen still switches modes.
