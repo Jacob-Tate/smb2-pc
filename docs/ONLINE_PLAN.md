@@ -116,8 +116,12 @@ P0.2 ─┴─ P0.3 ─┬─ P0.4
 
 - **Orchestrator** = the main session (Opus). Reads this plan, picks tasks, spawns subagents,
   verifies, merges, updates §1/§8. Doesn't write large amounts of code itself.
-- **Implementer** = `Agent` tool, `subagent_type: "general-purpose"`, `model: "sonnet"`,
-  `isolation: "worktree"` for any task that edits code. Read-only tasks (E1, E12, C1 analysis)
+- **Implementer** = `Agent` tool, `subagent_type: "general-purpose"`, `model: "sonnet"`.
+  **Don't use `isolation: "worktree"`**: on this machine it fails (drive-letter case mismatch) and bases
+  worktrees on `main`. Instead the orchestrator creates the worktree first:
+  `git -C smb2-pc worktree add -b task/<ID> ../wt/<ID> online` →
+  `C:\Users\jacob\source\super_monkey\wt\<ID>` (`/mnt/c/Users/jacob/source/super_monkey/wt/<ID>` in WSL),
+  and the prompt tells the agent to work only there. Remove with `git worktree remove ../wt/<ID>` after merging. Read-only tasks (E1, E12, C1 analysis)
   skip the worktree.
 - One task per subagent. If a task looks bigger than ~1 day of human work, split it first and
   add the pieces to §1.
@@ -657,4 +661,5 @@ Candidate fixes (choose from C1's results; likely several):
 - C1 DONE → decision D-8: migrate to SDL3 (C2a–C2e); D1 now depends on C2c.
 - P0.2 DONE (decomp built, 92.6% of game code matched), P0.3 DONE (`tools/win_build.sh`, smoke run OK).
 - E1 DONE: lockstep is feasible; summary in §6 "E1 results".
-- Launched in parallel (Sonnet, worktrees): C2b, P0.4, A1, B1, E5.
+- Launched in parallel (Sonnet, worktrees): C2b, P0.4, A1, B1, E5. The Agent tool's worktree isolation
+  failed, so the worktrees were made by hand under `super_monkey/wt/<ID>` (see §3.1).
