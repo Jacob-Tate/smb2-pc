@@ -39,8 +39,8 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | B3 | RVZ in dialogs, installer, help text, gamedata.c | B2 | disc+installer | TODO |
 | B4 | RVZ verification vs. the user's ISO | B2 | disc | TODO |
 | C1 | Steam Controller diagnosis (research) | – | input | DONE (docs/handoff/C1.md) |
-| C2a | `--list-controllers` diagnostic flag (SDL2, before migration) | P0.3 | input | TODO |
-| C2b | SDL3 3.4.x static build for i686 + x86_64 MinGW (`tools/build_sdl3_mingw.sh`) | P0.2 | env | IN PROGRESS (task/C2b, 2026-11-17) |
+| C2a | `--list-controllers` diagnostic flag | – | input | SKIPPED (SDL2 can't support the controller anyway; the flag moves into C2d, on SDL3) |
+| C2b | SDL3 3.4.x static build for i686 + x86_64 MinGW (`tools/build_sdl3_mingw.sh`) | P0.2 | env | DONE (49c8af2) |
 | C2c | Port platform/video/render/audio/assets glue to SDL3 | C2b, P0.4 | platform | TODO |
 | C2d | Port input to SDL3 gamepad API; Steam Controller works | C2c | input | TODO |
 | C2e | README/docs for SDL3; pin version | C2d | docs | TODO |
@@ -670,3 +670,8 @@ Candidate fixes (choose from C1's results; likely several):
 - B1 merged (0be1727): `src/assets/disc_reader.{c,h}`; extraction manifest identical to before, verify OK.
   The remembered disc path lives in `settings.dat` inside `--save-dir`, so test runs don't touch the user's.
 - B2 started (task/B2, also covers B4 verification).
+- C2b merged (49c8af2): SDL3 3.4.10 static libs in `mingw_deps/sdl3/<triplet>` (git-ignored; rebuild with
+  `tools/build_sdl3_mingw.sh`). Link libs = same set as SDL2 (see docs/handoff/C2b.md); `SDL_MAIN_HANDLED`, no SDL3main.
+  `super_monkey/sdl3_gamepad_check.exe` (x64 hello) prints how many gamepads SDL3 sees: user can run it
+  with the Steam Controller plugged in. C2a skipped (the `--list-controllers` flag goes into C2d).
+- C2c waits for P0.4 (its acceptance uses the smoke scripts).
