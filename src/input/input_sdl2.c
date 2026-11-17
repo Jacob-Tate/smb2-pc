@@ -127,6 +127,10 @@ static void clear_port_status(int port) {
 /* A device appeared (SDL device index): open it in the first free port.
  * Called for every pad at start-up and again for SDL's ADDED events, which
  * also arrive for pads present at start-up, so known pads are skipped. */
+/* Script token VADD*2: the script's virtual pad skips port 1 (so the
+ * keyboard/script keeps player 1 and the virtual pad is player 2). */
+static int s_vpad_skip_port1;
+
 void input_on_device_added(int device_index) {
     SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(device_index);
     PadPort* p = NULL;
@@ -135,7 +139,7 @@ void input_on_device_added(int device_index) {
     if (id < 0) return;
     for (i = 0; i < MAX_CONTROLLERS; i++)
         if (s_ports[i].id == id) return;   /* already open */
-    for (i = 0; i < MAX_CONTROLLERS; i++)
+    for (i = (s_vpad_skip_port1 && SDL_JoystickIsVirtual(device_index)) ? 1 : 0; i < MAX_CONTROLLERS; i++)
         if (s_ports[i].id < 0) { p = &s_ports[i]; break; }
     if (!p) {
         static SDL_JoystickID s_told = -1;
@@ -474,7 +478,8 @@ void input_on_gamepad_axis(int controller, int axis, float value) {
  * (alternate L/R trigger pulls; see parse_input_script).  Frames count
  * input polls (once per game frame).
  * Virtual pads (SDL virtual joysticks, to test hot-plugging and the pad
- * mapping through SDL without hardware): VADDX / VADDP4 / VADDP5 / VADDS
+ * mapping through SDL without hardware; with a 2 suffix, VADDX2 etc., port 1
+ * stays with the keyboard/script and the pad plugs into port 2): VADDX / VADDP4 / VADDP5 / VADDS
  * plug in an Xbox / PS4 / PS5 / Switch Pro pad, VDEL unplugs it, VBn holds
  * its SDL button n, VLT / VRT (VLTnnnnn / VRTnnnnn) pull its triggers,
  * VLXn / VLYn / VRXn / VRYn hold its stick axes at SDL value n (-32768..32767,
@@ -495,6 +500,7 @@ typedef struct {
     uint8_t trigL, trigR;  /* analog trigger values (TL/TR tokens) */
     int16_t row;           /* ROW token: alternate L/R every `row` frames */
     int8_t vadd, vdel;     /* virtual pad: plug in (kind 1-4) / unplug */
+    int8_t vport2;         /* VADD*2: plug it in on port 2 or later */
     int8_t vbtn;           /* virtual pad: SDL button + 1 held */
     int16_t vlt, vrt;      /* virtual pad: trigger axis values */
     uint8_t rawmask;       /* SX SY CX CY tokens present (bits 0-3) */
@@ -579,6 +585,11 @@ static void parse_input_script(void) {
         else if (!strcmp(name, "VADDP4")) ev->vadd = 2;
         else if (!strcmp(name, "VADDP5")) ev->vadd = 3;
         else if (!strcmp(name, "VADDS"))  ev->vadd = 4;
+        else if (!strcmp(name, "VADDX2") || !strcmp(name, "VADDP42") ||
+                 !strcmp(name, "VADDP52") || !strcmp(name, "VADDS2")) {
+            ev->vadd = name[4] == 'X' ? 1 : name[4] == 'S' ? 4 : name[5] == '4' ? 2 : 3;
+            ev->vport2 = 1;
+        }
         else if (!strcmp(name, "VDEL"))   ev->vdel = 1;
         else if ((name[0] == 'S' || name[0] == 'C') && (name[1] == 'X' || name[1] == 'Y') && name[2]) {
             int k = (name[0] == 'C') * 2 + (name[1] == 'Y');
@@ -869,6 +880,7 @@ void process_inputs(void)
                 if (s_script[e].trigL) tl = s_script[e].trigL;
                 if (s_script[e].trigR) tr = s_script[e].trigR;
                 if (script_frame == s_script[e].start) {
+                    if (s_script[e].vport2) s_vpad_skip_port1 = 1;
                     if (s_script[e].vadd) vpad_attach(s_script[e].vadd);
                     if (s_script[e].vdel) vpad_detach();
                 }
