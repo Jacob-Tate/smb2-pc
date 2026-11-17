@@ -74,9 +74,9 @@ static void fit_default_size(int* w, int* h) {
 static void set_defaults(PcSettings* s) {
     memset(s, 0, sizeof *s);
     fit_default_size(&s->width, &s->height);
-    /* First start: borderless fullscreen at the desktop resolution (no mode
-     * switch); width/height stay the windowed size used by Alt+Enter. */
-    s->display_mode = PCS_BORDERLESS;
+    /* First start: a centred window at the fit_default_size() size.  Alt+Enter,
+     * --fullscreen and the settings switch to borderless/fullscreen. */
+    s->display_mode = PCS_WINDOWED;
     s->vsync = 1;
     s->msaa = 4;
     s->aspect = PCS_ASPECT_AUTO;
@@ -172,7 +172,7 @@ static void load_file(PcSettings* s) {
     f = fopen(path, "rb");
     if (!f) {
         s_first_run = 1;
-        printf("[settings] no %s - first start, using defaults (borderless fullscreen)\n", path);
+        printf("[settings] no %s - first start, using defaults (windowed)\n", path);
         return;
     }
     if (!fgets(line, sizeof line, f) || strncmp(line, "SMB2PC ", 7) != 0) {
