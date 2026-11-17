@@ -30,17 +30,17 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | ID | Task | Deps | Lane | Status |
 |---|---|---|---|---|
 | P0.1 | Fork repo, create `online` integration branch | – | git | DONE (fork Jacob-Tate/smb2-pc, branch `online`) |
-| P0.2 | WSL toolchain + decomp + SDL2 deps | – | env | IN PROGRESS (orchestrator, 2026-11-17) |
-| P0.3 | `tools/win_build.sh` wrapper + smoke test | P0.2 | build | TODO |
-| P0.4 | Headless test harness doc + smoke scripts | P0.3 | tools | TODO |
-| A1 | Default to windowed instead of fullscreen | P0.3 | settings | TODO |
-| B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | TODO |
+| P0.2 | WSL toolchain + decomp + SDL2 deps | – | env | DONE (2026-11-17) |
+| P0.3 | `tools/win_build.sh` wrapper + smoke test | P0.2 | build | DONE (fa5fad2) |
+| P0.4 | Headless test harness doc + smoke scripts | P0.3 | tools | IN PROGRESS (task/P0.4, 2026-11-17) |
+| A1 | Default to windowed instead of fullscreen | P0.3 | settings | IN PROGRESS (task/A1, 2026-11-17) |
+| B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | IN PROGRESS (task/B1, 2026-11-17) |
 | B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | TODO |
 | B3 | RVZ in dialogs, installer, help text, gamedata.c | B2 | disc+installer | TODO |
 | B4 | RVZ verification vs. the user's ISO | B2 | disc | TODO |
 | C1 | Steam Controller diagnosis (research) | – | input | DONE (docs/handoff/C1.md) |
 | C2a | `--list-controllers` diagnostic flag (SDL2, before migration) | P0.3 | input | TODO |
-| C2b | SDL3 3.4.x static build for i686 + x86_64 MinGW (`tools/build_sdl3_mingw.sh`) | P0.2 | env | TODO |
+| C2b | SDL3 3.4.x static build for i686 + x86_64 MinGW (`tools/build_sdl3_mingw.sh`) | P0.2 | env | IN PROGRESS (task/C2b, 2026-11-17) |
 | C2c | Port platform/video/render/audio/assets glue to SDL3 | C2b, P0.4 | platform | TODO |
 | C2d | Port input to SDL3 gamepad API; Steam Controller works | C2c | input | TODO |
 | C2e | README/docs for SDL3; pin version | C2d | docs | TODO |
@@ -49,11 +49,11 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | TODO |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
-| E1 | Determinism audit (read-only report) | – (source only) | none | IN PROGRESS (no branch, read-only, 2026-11-17) |
+| E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
 | E2 | Deterministic session mode (`--netplay-det`) | E1 | game shim | TODO |
 | E3 | Input record/replay + state checksum | E2 | input+shim | TODO |
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | TODO |
-| E5 | Protocol header + relay server (port from partyboard) | E1 | server | TODO |
+| E5 | Protocol header + relay server (port from partyboard) | E1 | server | IN PROGRESS (task/E5, 2026-11-17) |
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | TODO |
 | E7 | Online lobby UI in the overlay | D4, E6 | overlay+netplay | TODO |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | TODO |
@@ -234,6 +234,11 @@ In WSL these are under `/mnt/c/Users/jacob/source/super_monkey/`. WSL distro: `U
   - WSL output may contain NUL bytes (UTF-16 from wsl.exe itself): pipe through `tr -d '\0'`.
   - WSL distro is Ubuntu 26.04, Python 3.14; 32 cores.
 - Output: `build64/bin/smb2_pc_port.exe` (+ `assets/`), `build32/bin/...`.
+- **Verified 2026-11-17**: `tools/win_build.sh both` builds clean (RelWithDebInfo; the many -Wpedantic
+  warnings in render_opengl.c are normal). In a worktree it symlinks `mingw_deps` to the main checkout's.
+  Smoke: `build64/bin/smb2_pc_port.exe --iso "<iso>" --save-dir <tmp> --audio-null --windowed --exit-frame 900`
+  → exit 0, log `[exit-frame] reached frame 900 - exiting.`
+- No Python on Windows (only in WSL). `.gitattributes` forces LF for `*.sh`, `*.py`, CMake files.
 - Run from Windows: `build64\bin\smb2_pc_port.exe --iso "C:\Users\jacob\source\super_monkey\Super Monkey Ball 2 (USA).iso" --save-dir <temp dir>`.
   Always pass a throwaway `--save-dir` in tests so the user's saves/settings are untouched.
 
@@ -498,6 +503,27 @@ Candidate fixes (choose from C1's results; likely several):
       any per-mode concerns.
 - **Acceptance**: every item answered with file:line evidence, and a proposed fix for each source of drift.
 
+### E1 results (required reading for E2–E9; full detail in `docs/handoff/E1.md`)
+- Sim is single-threaded, one tick per `video_finish_frame` (`main_loop.c:260-312`); the pacer never
+  catches up (`video_shim.c:403-409`); rendering never feeds back. DVD reads are synchronous.
+- Wall-clock seeds: `srand(OSGetTime())` (`main_loop.c:252`), boat RNG from `OSGetTick()/4`
+  (`boat_0.c:241,300`, `boat_5.c:325`), `rend_efc.c:618` → frame-derived clock in det mode.
+- Session card: in-memory and empty; set `unlock_info.partyGames = 0x1B600` (all party games) after
+  `clear_unlock_info()`; the title's create-file branch (`adv.c:1747-1754`) builds the save.
+- Modal shim screens (F1 overlay, stick screen, updater, memcard UI) poll pads themselves → disable online.
+- The hang watchdog kills the process after 8 s without a frame (`stubs_manual.c:139-160`), so the
+  lockstep wait must bump `g_shim_frame_pulse` and pump SDL events.
+- **Cross-arch: `Ball` is 0x1B0 (i686) vs 0x1B8 (x64)**, so checksums must be a curated field-wise hash
+  computed inside a game TU, not raw memory. Allow cross-arch play only after runtime test T6 passes.
+- Pad hook: inside `input_poll_gc_pads`, after `game_process_sticks` (~L907) and before the
+  pressed/released/repeat derivation (~L945), only for the call from `video_finish_frame`
+  (`video_shim.c:337`). Sample local devices into a private buffer; send post-stick-gate values.
+  Baseball calls `video_finish_frame` 2 extra times without a tick → count polls, not ticks.
+- Online-playable modes: Competition, Race, Target, Bowling, Boat, Dogfight, Baseball, Golf. Billiards,
+  Shot, Fight, Soccer and Tennis aren't linked → hide or lock them online.
+- Handshake "must match" config: build id, disc manifest hash (`fst_crc32`), locale, session epoch.
+- Runtime tests T1–T9 (E1.md) belong in E4; T2 (render independence) and T6 (cross-arch) matter most.
+
 ### E2 Deterministic session mode
 - **Files**: per E1 (expect `os_shim.c`, `card_shim.c`, `dvd_shim.c`, `video_shim.c`, `main.c`, new `src/netplay/session.c`).
 - **Goal**: `--det-session` (also turned on by netplay later) makes a run fully reproducible:
@@ -629,3 +655,6 @@ Candidate fixes (choose from C1's results; likely several):
   `smb2-pc/mingw_deps/{i686,x86_64}-w64-mingw32` (i686 built in `~/sdl2build32` in the WSL fs).
   Decomp copy of the disc: `smb2-decomp/orig/GM2E8P/game.rvz`. llvm-mingw → `super_monkey/toolchains/`.
 - C1 DONE → decision D-8: migrate to SDL3 (C2a–C2e); D1 now depends on C2c.
+- P0.2 DONE (decomp built, 92.6% of game code matched), P0.3 DONE (`tools/win_build.sh`, smoke run OK).
+- E1 DONE: lockstep is feasible; summary in §6 "E1 results".
+- Launched in parallel (Sonnet, worktrees): C2b, P0.4, A1, B1, E5.

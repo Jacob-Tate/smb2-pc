@@ -1,0 +1,6 @@
+# WSL builds run these files: keep LF in every checkout/worktree
+*.sh text eol=lf
+*.py text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.nsi text eol=lf
