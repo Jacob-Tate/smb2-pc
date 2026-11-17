@@ -918,9 +918,25 @@ static void sd_traverse(struct StageDef *sd)
                 sdw32n(&ch[i], 6);
                 sd_extra_channels(&ch[i]);
             }
+            /* unk20 / unk30 are not keyframes: race2 reads them as 0x14-byte
+             * markers { Vec pos; s16 rotX, rotY, rotZ, pad } (speed plates /
+             * recover plates, race2_2.c fn_10_C69C, race2_0.c fn_10_5F1C).
+             * Swapping those halves as words exchanged rotX and rotY and
+             * lost rotZ, so the plates stood up and boosted the wrong way. */
             kc = &ex->unk20;
-            for (i = 0; i < 9; i++)
-                sd_keyframes(&kc[i], "extra keyframe");
+            for (i = 0; i < 9; i++) {
+                if (i == 0 || i == 2) {
+                    u8 *m = sd_ptr(&kc[i].frames);
+                    s32 j, nm = sd_count(kc[i].count, "race marker");
+
+                    for (j = 0; m != NULL && j < nm; j++, m += 0x14) {
+                        sdw32n(m, 3);
+                        sdw16n(m + 0xC, 4);
+                    }
+                } else {
+                    sd_keyframes(&kc[i], "extra keyframe");
+                }
+            }
         }
     }
 
