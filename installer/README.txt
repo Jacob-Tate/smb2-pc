@@ -93,7 +93,7 @@ Controls
   C Stick          right stick  right stick        right stick -
   +Control Pad     d-pad        d-pad              d-pad       arrow keys
 
-  Alt+Enter : toggle fullscreen      F1 : PC settings overlay
+  Alt+Enter : toggle fullscreen (starts windowed)      F1 : PC settings overlay
 
 - Quit to Desktop: title screen B (or Esc), Mode Select X (or Esc), the pause menu,
   Options > Game Screen, or the F1 overlay. It asks "Quit to Desktop?" (Yes / No).

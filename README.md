@@ -26,7 +26,7 @@ runs its own compiled code instead of the disc's `main.dol`.
   between them.
 - Renderers: OpenGL 3.3 (default) and Direct3D 12 (`--renderer d3d12` or the
   settings).
-- Any resolution, windowed or borderless fullscreen, original or stretched
+- Any resolution, windowed (the default) or borderless fullscreen, original or stretched
   aspect, MSAA, vsync.
 - High frame rates: 120/144/165/240 fps, the display's refresh rate or
   uncapped. The game still runs at 60 ticks per second and the frames in
@@ -84,7 +84,7 @@ is GameCube A); Nintendo pads are mapped by label, as in Nintendo's own ports.
 | C Stick | right stick | right stick | right stick | - |
 | +Control Pad | d-pad | d-pad | d-pad | arrow keys |
 
-- **Alt+Enter** toggles fullscreen, **F1** opens the PC settings overlay.
+- **Alt+Enter** toggles fullscreen (the game starts windowed; an existing settings file is kept), **F1** opens the PC settings overlay.
 - Quit to Desktop: B (or Esc) on the title screen, X (or Esc) on Mode Select,
   the pause menu, Options > Game Screen or the F1 overlay.
 - The triggers give the analog L/R value and, past 85 % of their travel, the
