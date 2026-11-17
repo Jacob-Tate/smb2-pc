@@ -148,6 +148,7 @@ set(SOURCES
     src/render/render_d3d12.c
     src/assets/assets.c
     src/assets/iso.c
+    src/assets/disc_reader.c
     src/assets/gamedata.c
     src/assets/disc_icon.c
     src/platform/install_mode.c
