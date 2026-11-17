@@ -22,7 +22,7 @@ int64_t disc_reader_size(DiscReader* r);
  * disc or the read fails (dst contents are then unspecified). */
 bool disc_reader_read(DiscReader* r, uint64_t offset, uint32_t len, void* dst);
 void disc_reader_close(DiscReader* r);
-/* "iso" (plain image); later "rvz". */
+/* "iso" (plain image) or "rvz". */
 const char* disc_reader_format(DiscReader* r);
 
 #ifdef __cplusplus

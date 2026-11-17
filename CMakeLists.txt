@@ -149,6 +149,7 @@ set(SOURCES
     src/assets/assets.c
     src/assets/iso.c
     src/assets/disc_reader.c
+    src/assets/rvz.c
     src/assets/gamedata.c
     src/assets/disc_icon.c
     src/platform/install_mode.c
@@ -191,6 +192,11 @@ endif()
 
 # Create executable
 add_executable(smb2_pc_port ${SOURCES})
+
+# Zstandard decompressor (BSD, third_party/zstd) for RVZ discs; static, no DLL.
+add_library(smb2_zstd STATIC ${CMAKE_SOURCE_DIR}/third_party/zstd/zstddeclib.c)
+target_compile_options(smb2_zstd PRIVATE -w)
+target_link_libraries(smb2_pc_port smb2_zstd)
 
 # Deterministic libm/rand/qsort for game code (docs/detmath.md): fdlibm +
 # the GC MSL's rand/qsort, so every compiler/CRT/CPU gets the same bits.
