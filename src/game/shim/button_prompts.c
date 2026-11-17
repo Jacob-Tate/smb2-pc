@@ -31,6 +31,7 @@
 
 #define STBI_NO_STDIO
 #include "stb_image.h"   /* PNG decoder, stb_image_impl.c */
+#include "netplay/session.h"
 
 extern const char *g_button_style_arg;   /* main.c: --button-style */
 void pc_textdraw_reload_button_glyphs(void); /* textdraw.c */
@@ -77,6 +78,8 @@ static void resolve_style(int *style, int *alt_start)
             fprintf(stderr, "[prompts] unknown button style '%s' (auto|gc|ps|ps4|ps5|xbox|switch)\n", v);
     }
     setting = s_cli >= 0 ? s_cli : g_pcs.button_style;
+    if (pc_session_active())   /* E1 D9: string widths must not depend on the local device */
+        setting = PCB_SETTING_GC;
     type = input_controller_type();
     *alt_start = 0;
     switch (setting) {

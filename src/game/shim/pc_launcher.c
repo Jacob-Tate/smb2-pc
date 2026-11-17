@@ -13,6 +13,7 @@
 #include "pool.h"
 #include "dip.h"
 #include "background.h"
+#include "netplay/session.h"
 
 #define PAD_REPEAT(mask) \
     ((pad_status_groups[0].unk0[4].button & (mask)) || (analog_inputs[0][4] & (mask)) \
@@ -122,7 +123,7 @@ static void launcher_start(const struct LauncherEntry *e)
          * "<id>,<id>,..." plays the next one at each Challenge start, and
          * "floors" the next floor of the chosen difficulty (long-session
          * tests: exit to the launcher and start again) */
-        if (getenv("SMB2_PC_STAGE") && strcmp(getenv("SMB2_PC_STAGE"), "floors") == 0) {
+        if (pc_session_dbg_getenv("SMB2_PC_STAGE") && strcmp(pc_session_dbg_getenv("SMB2_PC_STAGE"), "floors") == 0) {
             static int s_floor;
             int id = g_update_cm_course(modeCtrl.difficulty, ++s_floor, modeCtrl.courseFlags);
             if (id <= 0) {
@@ -130,9 +131,9 @@ static void launcher_start(const struct LauncherEntry *e)
                 id = g_update_cm_course(modeCtrl.difficulty, 1, modeCtrl.courseFlags);
             }
             g_some_stage_id = (s16)id;
-        } else if (getenv("SMB2_PC_STAGE")) {
+        } else if (pc_session_dbg_getenv("SMB2_PC_STAGE")) {
             static int s_stage_n;
-            const char *q = getenv("SMB2_PC_STAGE"), *c;
+            const char *q = pc_session_dbg_getenv("SMB2_PC_STAGE"), *c;
             int n = 1, k;
             for (c = q; *c; c++)
                 n += *c == ',';
@@ -145,7 +146,7 @@ static void launcher_start(const struct LauncherEntry *e)
         }
         g_another_stage_id = mode_info.currStageId = g_some_stage_id;
         /* test hook: SMB2_PC_WIDE=1 plays it in the game's 16:9 TV mode */
-        if (getenv("SMB2_PC_WIDE") && atoi(getenv("SMB2_PC_WIDE")) > 0) {
+        if (pc_session_dbg_getenv("SMB2_PC_WIDE") && atoi(pc_session_dbg_getenv("SMB2_PC_WIDE")) > 0) {
             extern void set_render_mode(int);
             extern void camera_update_aspect_ratios(void);
             modeCtrl.wideMode = 1;
@@ -200,8 +201,8 @@ static void launcher_start(const struct LauncherEntry *e)
  * (dvd_shim.c), so it also works through the real menus. */
 void pc_test_dip_apply(void)
 {
-    if (getenv("SMB2_PC_DIP"))
-        dip_switches |= (u32)strtoul(getenv("SMB2_PC_DIP"), NULL, 16);
+    if (pc_session_dbg_getenv("SMB2_PC_DIP"))
+        dip_switches |= (u32)strtoul(pc_session_dbg_getenv("SMB2_PC_DIP"), NULL, 16);
 }
 
 static void launcher_tick(void)
@@ -278,7 +279,7 @@ extern s32 golf_wind_angle;
 extern float golf_wind_velocity;
 void pc_golf_test_wind(void)
 {
-    const char *e = getenv("SMB2_PC_GOLF_WIND");
+    const char *e = pc_session_dbg_getenv("SMB2_PC_GOLF_WIND");
     if (e) {
         golf_wind_angle = atoi(e);
         e = strchr(e, ',');

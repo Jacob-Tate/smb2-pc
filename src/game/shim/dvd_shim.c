@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "netplay/session.h"
 
 static int s_current_dir = 0;  /* FST index of the DVD current directory */
 
@@ -213,7 +214,7 @@ extern void selNgcEpilogue(void);
  * debug-text stand-in launcher instead. */
 static int use_pc_launcher(void)
 {
-    const char *e = getenv("SMB2_PC_LAUNCHER");
+    const char *e = pc_session_dbg_getenv("SMB2_PC_LAUNCHER");
     return e && e[0] == '1';
 }
 static void selNgcOrLauncherPrologue(void)

@@ -9,6 +9,7 @@
 #include "install_mode.h"
 #include "pc_update.h"
 #include "pc_card.h"
+#include "netplay/session.h"
 #include <SDL2/SDL_hints.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,6 +52,9 @@ long g_trace_frame_arg = 0;
 const char* g_audio_wav_arg = NULL;   /* --audio-wav: dump mixed output */
 int g_audio_null_arg = 0;             /* --audio-null: no audio device */
 const char* g_button_style_arg = NULL; /* --button-style: auto|gc|ps|ps4|ps5|xbox|switch */
+static int g_det_session_arg = 0;          /* --det-session (docs/handoff/E2.md) */
+static SessionConfig g_session_cfg;
+static int g_session_epoch_given, g_session_locale_given;
 
 /* Forward declarations from decompiled game (weak stubs for standalone build) */
 #if !defined(SMB2_LINK_GAME)
@@ -181,6 +185,14 @@ int main(int argc, char* argv[]) {
             g_audio_wav_arg = argv[++i];
         } else if (strcmp(argv[i], "--button-style") == 0 && i + 1 < argc) {
             g_button_style_arg = argv[++i];
+        } else if (strcmp(argv[i], "--det-session") == 0) {
+            g_det_session_arg = 1;
+        } else if (strcmp(argv[i], "--session-epoch") == 0 && i + 1 < argc) {
+            g_session_cfg.epoch = strtoull(argv[++i], NULL, 0);
+            g_session_epoch_given = 1;
+        } else if (strcmp(argv[i], "--session-locale") == 0 && i + 1 < argc) {
+            g_session_cfg.locale = (uint8_t)atoi(argv[++i]);
+            g_session_locale_given = 1;
         } else if (strcmp(argv[i], "--audio-null") == 0) {
             g_audio_null_arg = 1;
         } else if (strcmp(argv[i], "--perf") == 0) {
@@ -220,10 +232,31 @@ int main(int argc, char* argv[]) {
             printf("  --audio-null      Run audio without an output device\n");
             printf("  --button-style <s> Button prompts: auto, gc, ps, ps4, ps5, xbox or switch\n"
                    "                    (this run only)\n");
+            printf("  --det-session     Deterministic session: frame-derived clock, in-memory\n"
+                   "                    empty memory card with all party games unlocked, forced\n"
+                   "                    locale/button style, no PC rows or dialogs\n"
+                   "                    (--session-epoch <n>, --session-locale <0-5>)\n");
             printf("  --perf            Print frame timing / GL counters every 300 frames\n");
             printf("  --help, -h        Show this help\n");
             return 0;
         }
+    }
+
+    if (g_det_session_arg) {
+        /* Deterministic session (E2): config from the defaults + --session-*
+         * flags (netplay fills it from START_GAME later).  Everything the
+         * session pins is described in docs/handoff/E2.md. */
+        SessionConfig c;
+        pc_session_default_config(&c);
+        if (g_session_epoch_given) c.epoch = g_session_cfg.epoch;
+        if (g_session_locale_given) c.locale = g_session_cfg.locale;
+        g_session_cfg = c;
+        if (!pc_session_begin(&g_session_cfg)) {
+            fprintf(stderr, "invalid session config (locale must be 0..5)\n");
+            return 1;
+        }
+        g_language_arg = NULL;       /* the session forces the locale */
+        g_button_style_arg = NULL;   /* ... and the GameCube button style */
     }
 
     /* install.ini next to the exe (installed mode); absent = portable */
@@ -231,21 +264,22 @@ int main(int argc, char* argv[]) {
 #ifdef SMB2_LINK_GAME
     {   /* save import/export from the command line: before the log
          * redirect, so the result shows in the console */
-        int rc = pc_gci_cli(argc, argv);
+        int rc = pc_session_active() ? -1 : pc_gci_cli(argc, argv);   /* no save import/export in a session */
         if (rc >= 0)
             return rc;
     }
 #endif
     pc_install_setup_logs();
 #ifdef SMB2_LINK_GAME
-    pc_gci_startup();   /* memcard\import\ drop-in saves, before the game reads the card */
+    if (!pc_session_active())   /* the session card is in memory (E1 D4/D11) */
+        pc_gci_startup();   /* memcard\import\ drop-in saves, before the game reads the card */
 #endif
 
     /* Saved settings (or first-run defaults), then command-line overrides */
     pcs_load();
     /* updater (docs/updater.md): version to the log, automatic check on a
      * background thread (at most daily; not in automated runs) */
-    pc_update_startup(g_input_script_arg || g_dump_interval_arg || g_exit_frame_arg ||
+    pc_update_startup(pc_session_active() || g_input_script_arg || g_dump_interval_arg || g_exit_frame_arg ||
                       getenv("SMB2_INPUT_SCRIPT"));
     /* Automated runs (input scripts, frame dumps, --exit-frame) stay
      * windowed unless asked otherwise, so they never take over the screen. */
@@ -362,7 +396,7 @@ int main(int argc, char* argv[]) {
     printf("DEBUG: Renderer initialized\n");
     fflush(stdout);
     pcs_apply_startup();   /* exclusive fullscreen, drawable size */
-    pcs_first_run_aspect(g_input_script_arg || g_dump_interval_arg || g_exit_frame_arg ||
+    pcs_first_run_aspect(pc_session_active() || g_input_script_arg || g_dump_interval_arg || g_exit_frame_arg ||
                          getenv("SMB2_INPUT_SCRIPT"));
 
     printf("DEBUG: Initializing audio...\n");
@@ -392,13 +426,18 @@ int main(int argc, char* argv[]) {
     /* Map GameCube main RAM at 0x80000000 and hand control to the game.
      * _prolog() contains the game's own init + infinite frame loop; the
      * shim's video_finish_frame() pumps SDL and exits on window close. */
-    gc_mem_init();
+    if (!gc_mem_init() && pc_session_active()) {
+        /* E1 D15/D16: a relocated arena shifts every heap pointer */
+        fprintf(stderr, "FATAL: deterministic session needs GC RAM at 0x80000000\n");
+        return 1;
+    }
     pc_check_address_space();
     {   /* The game's language: the DOL's main() sets `locale` once at boot
          * (US disc: always 0, 0x800069F8); the port's main stands in for it
          * and sets the chosen one.  docs/language.md */
         extern int locale;
-        int l = pcs_language_locale(g_pcs.language);
+        int l = pc_session_active() ? (int)pc_session_config()->locale   /* E1 D7 */
+                                    : pcs_language_locale(g_pcs.language);
         extern void pc_font_ext_init(int locale);
         locale = l;
         pcs_set_active_locale(l);

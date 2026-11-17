@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <time.h>
+#include "netplay/session.h"
 
 /* ------------------------------------------------- arena ---- */
 static u32 s_arena_lo, s_arena_hi;
@@ -84,7 +85,7 @@ int pc_alloc_site_line;
 static int heap_check_on(void)
 {
     if (s_heap_check < 0) {
-        const char *e = getenv("SMB2_HEAP_CHECK");
+        const char *e = pc_session_active() ? NULL : getenv("SMB2_HEAP_CHECK");   /* D13 */
         s_heap_check = (e && *e && *e != '0');
         if (s_heap_check)
             fprintf(stderr, "[heapcheck] enabled\n");
@@ -427,12 +428,16 @@ static u64 host_ns(void)
 
 s64 OSGetTime(void)
 {
+    if (pc_session_active())   /* deterministic session: frame-derived (E1 D1) */
+        return pc_session_os_time();
     /* Wall-clock based so save timestamps are real: GC epoch is 2000-01-01. */
     return (s64)(((u64)time(NULL) - 946684800ull) * GC_TICK_HZ);
 }
 
 u32 OSGetTick(void)
 {
+    if (pc_session_active())   /* E1 D2/D3: boat RNG seed, gpu frame time */
+        return pc_session_os_tick();
     return (u32)(host_ns() * GC_TICK_HZ / 1000000000ull);
 }
 
