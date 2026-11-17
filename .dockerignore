@@ -1,0 +1,24 @@
+# Keep the Docker build context tiny: the server image only needs server/ and include/netplay/.
+.git
+.github
+build*/
+cmake-build*/
+mingw_deps
+toolchains
+third_party
+assets
+installer
+src
+docs
+tools
+wt
+*.iso
+*.rvz
+*.gcm
+*.ciso
+*.exe
+*.dll
+*.o
+*.obj
+*.zip
+*.7z
