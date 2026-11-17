@@ -132,8 +132,12 @@ static const char* s_hlsl =
 "    VSOut o;\n"
 "    float4 pos = mul(u_modelview, float4(v.a_position, 1.0));\n"
 "    o.pos = mul(u_projection, pos);\n"
-/* GX clip z/w is in [-1 (near), 0 (far)]: depth = z/w + 1 */
-"    o.pos.z = o.pos.z + o.pos.w;\n"
+/* GX clip z/w is in [-1 (near), 0 (far)].  The depth buffer stores it
+ * reversed, -z/w = 1 - GX depth (compares and clears flipped to match):
+ * z/w + 1 lies near 1.0 for distant geometry, where float rounding of z + w
+ * and of the interpolation is a D24 step or more, enough to z-fight layers
+ * 1-2 steps apart (2-5 lava blocks); -z/w keeps the precision. */
+"    o.pos.z = -o.pos.z;\n"
 /* GL rasterizes in y-up window space, D3D in y-down: a triangle edge that
  * lies exactly on a row of pixel centres (common for 2D quads at the 1.5x
  * EFB scale) is filled on opposite sides.  Nudging everything 1/256 pixel
@@ -316,7 +320,15 @@ static const char* s_hlsl =
 "        int4 o = u_gx_ord[s];\n"
 "        float2 uv = GX_SEL(g_tc, o.x), dx = GX_SEL(g_tdx, o.x), dy = GX_SEL(g_tdy, o.x);\n"
 "        if (o.x == 0 && ((u_misc.y >> s) & 1) == 0) uv = gx_uvclamp(uv);\n"
-"        if (u_misc.y != 0 && o.y >= 0) uv = gx_ind_uv(s, o.y, uv, iacc);\n"
+"        if (u_misc.y != 0 && o.y >= 0) {\n"
+/* an indirect stage samples with the LOD of its offset coordinate
+ * (utcLod = GX_FALSE in all the game's calls), like the GL path's
+ * implicit-LOD texture(); the unmodified coordinate's gradients picked too
+ * fine a mip for warped surfaces (the lava came out sharper / noisier
+ * than on GL and Dolphin) */
+"            uv = gx_ind_uv(s, o.y, uv, iacc);\n"
+"            if (((u_misc.y >> s) & 1) != 0) { dx = ddx(uv); dy = ddy(uv); }\n"
+"        }\n"
 "        float4 t = (o.y >= 0) ? gx_tex(o.y, uv, dx, dy) : float4(1.0, 1.0, 1.0, 1.0);\n"
 "        float4 ras = (o.z != 0) ? v_color : float4(0.0, 0.0, 0.0, 0.0);\n"
 "        if (o.w != 0) {  /* TEV swap tables (gx_core gxfx_swap_bits) */\n"
@@ -894,15 +906,16 @@ static D3D12_BLEND gx_blend_dst(int f) {
     default: return D3D12_BLEND_ZERO;
     }
 }
+/* the depth buffer is reversed (see VSMain): nearer = greater */
 static D3D12_COMPARISON_FUNC gx_cmp(int f) {
     switch (f) {
     case GX_NEVER: return D3D12_COMPARISON_FUNC_NEVER;
-    case GX_LESS: return D3D12_COMPARISON_FUNC_LESS;
+    case GX_LESS: return D3D12_COMPARISON_FUNC_GREATER;
     case GX_EQUAL: return D3D12_COMPARISON_FUNC_EQUAL;
-    case GX_LEQUAL: return D3D12_COMPARISON_FUNC_LESS_EQUAL;
-    case GX_GREATER: return D3D12_COMPARISON_FUNC_GREATER;
+    case GX_LEQUAL: return D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+    case GX_GREATER: return D3D12_COMPARISON_FUNC_LESS;
     case GX_NEQUAL: return D3D12_COMPARISON_FUNC_NOT_EQUAL;
-    case GX_GEQUAL: return D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+    case GX_GEQUAL: return D3D12_COMPARISON_FUNC_LESS_EQUAL;
     default: return D3D12_COMPARISON_FUNC_ALWAYS;
     }
 }
@@ -1244,7 +1257,7 @@ static int create_targets(void) {
     ID3D12Device_CreateRenderTargetView(D.dev, D.rt, NULL, rt_rtv());
     memset(&cv, 0, sizeof cv);
     cv.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    cv.DepthStencil.Depth = 1.0f;
+    cv.DepthStencil.Depth = 0.0f;   /* reversed depth: GX far */
     D.ds = make_tex2d(D.width, D.height, 1, DXGI_FORMAT_D24_UNORM_S8_UINT, D.msaa,
                       D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, D3D12_RESOURCE_STATE_DEPTH_WRITE, &cv);
     if (!D.ds) return 0;
@@ -1635,7 +1648,7 @@ static void dx_clear(const int* rect, uint32_t rgba, float depth, int force) {
     /* glClear obeys the depth write mask; the copy-clear forces it on */
     if (force || D.zwrite)
         ID3D12GraphicsCommandList_ClearDepthStencilView(D.cl, rt_dsv(),
-            D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, depth, 0, pr ? 1 : 0, pr);
+            D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f - depth, 0, pr ? 1 : 0, pr);
 }
 
 static void dx_draw(const GxDrawCall* d) {
@@ -2130,7 +2143,7 @@ static int dx_read_pixels(int x, int y, int w, int h, int depth, void* out) {
             for (i = 0; i < bw; i++) {
                 uint32_t v;
                 memcpy(&v, s + i * 4, 4);
-                of[i] = (float)(v & 0xFFFFFFu) / 16777215.0f;
+                of[i] = (float)(0xFFFFFFu - (v & 0xFFFFFFu)) / 16777215.0f;   /* reversed */
             }
         } else {
             memcpy(o, s, (size_t)bw * 4);
@@ -2329,7 +2342,7 @@ static void dx_restore(float brightness) {
     rt_to(D3D12_RESOURCE_STATE_RENDER_TARGET);
     ID3D12GraphicsCommandList_ClearRenderTargetView(D.cl, rt_rtv(), black, 0, NULL);
     ID3D12GraphicsCommandList_ClearDepthStencilView(D.cl, rt_dsv(),
-        D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, NULL);
+        D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 0.0f, 0, 0, NULL);
     if (D.srv_gpu_off + 1 > SRV_SEG) submit_and_wait();
     dst = heap_cpu(D.srv_gpu, (UINT)(D.slot * SRV_SEG) + D.srv_gpu_off, D.srv_inc);
     ID3D12Device_CopyDescriptorsSimple(D.dev, 1, dst, D.cap_srv, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
