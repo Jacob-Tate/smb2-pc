@@ -50,7 +50,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
-| E2 | Deterministic session mode (`--netplay-det`) | E1 | game shim | TODO |
+| E2 | Deterministic session mode (`--det-session`) | E1 | game shim | IN PROGRESS (task/E2, 2026-11-17) |
 | E3 | Input record/replay + state checksum | E2 | input+shim | TODO |
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | TODO |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | IN PROGRESS (task/E5, 2026-11-17) |
@@ -58,7 +58,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E7 | Online lobby UI in the overlay | D4, E6 | overlay+netplay | TODO |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | TODO |
 | E9 | Disconnect → CPU/neutral pad, desync handling | E6 | netplay | TODO |
-| E10 | Server Docker image, CI, Portainer stack | E5 | server | TODO |
+| E10 | Server Docker image, CI, Portainer stack | E5 | server | IN PROGRESS (task/E10, 2026-11-17) |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
@@ -675,3 +675,12 @@ Candidate fixes (choose from C1's results; likely several):
   `super_monkey/sdl3_gamepad_check.exe` (x64 hello) prints how many gamepads SDL3 sees: user can run it
   with the Steam Controller plugged in. C2a skipped (the `--list-controllers` flag goes into C2d).
 - C2c waits for P0.4 (its acceptance uses the smoke scripts).
+- **User ran `sdl3_gamepad_check.exe` with the new Steam Controller, Steam closed: "SDL3 version 3.4.10,
+  gamepads: 1"** → SDL3 sees it; the C2c/C2d migration will fix C2.
+- E5 merged (1f9afa1): `include/netplay/protocol.h` (SMB_ v1, port 7855, 58-byte SessionConfig), `server/`
+  (ENet 1.3.18), `tools/server_test.sh` (77 checks pass; re-run by orchestrator). Notes for E6: drop FRAMEs
+  whose `gameSeq` isn't the current game's; host-only END_GAME; `humanMask` authoritative per poll; no
+  mid-game join (ERR_IN_GAME). Message table in docs/handoff/E5.md.
+- No Docker on this PC (Windows or WSL): E10's image is verified by GitHub Actions after pushing `online`.
+- Started E10 (task/E10) and E2 (task/E2). E2 and C2c both touch main.c / video_shim.c / pc_quit.c:
+  whichever merges second rebases.
