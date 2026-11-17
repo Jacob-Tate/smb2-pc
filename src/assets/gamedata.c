@@ -3,6 +3,7 @@
 #include "gamedata.h"
 #include "disc_icon.h"
 #include "iso.h"
+#include "disc_reader.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -329,40 +330,29 @@ static void prog_add(Prog* p, uint64_t n)
     if (p->cb) p->cb(p->done, p->total, p->user);
 }
 
-static int64_t file_size64(FILE* f)
-{
-#ifdef _WIN32
-    if (_fseeki64(f, 0, SEEK_END) != 0) return -1;
-    return _ftelli64(f);
-#else
-    if (fseeko(f, 0, SEEK_END) != 0) return -1;
-    return (int64_t)ftello(f);
-#endif
-}
-
 /* Can the port read this image?  Fills hdr.  Returns GD_OK with the disc
  * ID/name in msg, or an error code + the reason. */
 static int check_image(const char* iso, uint8_t hdr[0x440], int64_t* out_size,
                        char* msg, size_t msgsz)
 {
-    FILE* f = fopen(iso, "rb");
+    char err[512];
+    DiscReader* f = disc_reader_open(iso, err, sizeof err);
     uint8_t nk[4];
     int64_t size;
     uint32_t fst_off, fst_size;
     if (!f) {
-        setmsg(msg, msgsz, "cannot open %s: %s", iso, strerror(errno));
+        setmsg(msg, msgsz, "%s", err);
         return GD_ERR_IMAGE;
     }
-    size = file_size64(f);
-    fseek(f, 0, SEEK_SET);
-    if (size < 0x440 || fread(hdr, 1, 0x440, f) != 0x440) {
-        fclose(f);
+    size = disc_reader_size(f);
+    if (size < 0x440 || !disc_reader_read(f, 0, 0x440, hdr)) {
+        disc_reader_close(f);
         setmsg(msg, msgsz, "%s is too small to be a GameCube disc image", iso);
         return size < 0x440 && size >= 0 ? GD_ERR_NOT_SMB2 : GD_ERR_IMAGE;
     }
     nk[0] = 0;
-    if (size >= 0x204) { fseek(f, 0x200, SEEK_SET); if (fread(nk, 1, 4, f) != 4) nk[0] = 0; }
-    fclose(f);
+    if (size >= 0x204 && !disc_reader_read(f, 0x200, 4, nk)) nk[0] = 0;
+    disc_reader_close(f);
     *out_size = size;
 
     if (!memcmp(hdr, "RVZ\x01", 4) || !memcmp(hdr, "WIA\x01", 4)) {
