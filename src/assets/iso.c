@@ -1,6 +1,7 @@
 /* GameCube/Wii ISO Parser */
 #include "iso.h"
 #include "gamedata.h"
+#include "disc_reader.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -11,7 +12,7 @@
 #include <unistd.h>
 
 struct ISOArchive {
-    FILE* file;
+    DiscReader* reader;     /* image backend */
     char* path;
     GCDiscHeader header;
     GCFSTEntry* fst;
@@ -19,10 +20,6 @@ struct ISOArchive {
     int fst_count;
     ISOFileEntry* entries;
     bool is_wii;
-    bool is_rvz;
-    /* RVZ specific */
-    void* rvz_data;
-    size_t rvz_size;
     /* extracted game-data folder backend (iso_open_gamedata) */
     bool is_dir;
     char** host_paths;      /* per FST entry: <dir>/files/<path> */
@@ -44,20 +41,6 @@ static uint16_t read_be16(const void* ptr) {
 static uint32_t read_be24(const void* ptr) {
     const uint8_t* b = (const uint8_t*)ptr;
     return (b[0] << 16) | (b[1] << 8) | b[2];
-}
-
-/* RVZ (compressed Wii/GC image): detected only, so iso_open can reject it */
-static bool iso_read_rvz_header(FILE* f, ISOArchive* arc) {
-    /* RVZ format: magic "RVZ\0", version, then compressed blocks */
-    uint8_t magic[4];
-    if (fread(magic, 1, 4, f) != 4) return false;
-    if (magic[0] != 'R' || magic[1] != 'V' || magic[2] != 'Z' || magic[3] != 0) {
-        fseek(f, 0, SEEK_SET);
-        return false;
-    }
-    arc->is_rvz = true;
-    arc->is_wii = true;  /* RVZ is typically Wii */
-    return true;
 }
 
 int iso_entry_next(ISOArchive* arc, int index);
@@ -141,27 +124,20 @@ ISOArchive* iso_open(const char* path) {
     if (!arc) return NULL;
 
     arc->path = strdup(path);
-    arc->file = fopen(path, "rb");
-    if (!arc->file) {
-        free(arc->path);
-        free(arc);
-        return NULL;
-    }
-
-    /* Check for RVZ */
-    if (iso_read_rvz_header(arc->file, arc)) {
-        fprintf(stderr, "RVZ format detected (not fully supported yet)\n");
-        fclose(arc->file);
-        free(arc->path);
-        free(arc);
-        return NULL;
+    {
+        char err[512];
+        arc->reader = disc_reader_open(path, err, sizeof err);
+        if (!arc->reader) {
+            fprintf(stderr, "%s\n", err);
+            free(arc->path);
+            free(arc);
+            return NULL;
+        }
     }
 
     /* Read disc header */
-    if (fread(&arc->header, 1, sizeof(GCDiscHeader), arc->file) != sizeof(GCDiscHeader)) {
-        fclose(arc->file);
-        free(arc->path);
-        free(arc);
+    if (!disc_reader_read(arc->reader, 0, sizeof(GCDiscHeader), &arc->header)) {
+        iso_close(arc);
         return NULL;
     }
 
@@ -172,9 +148,7 @@ ISOArchive* iso_open(const char* path) {
         } else {
             fprintf(stderr, "Invalid GC/Wii disc magic: 0x%08X\n",
                     read_be32(&arc->header.magic));
-            fclose(arc->file);
-            free(arc->path);
-            free(arc);
+            iso_close(arc);
             return NULL;
         }
     }
@@ -185,8 +159,7 @@ ISOArchive* iso_open(const char* path) {
 
     arc->fst = (fst_size >= sizeof(GCFSTEntry) && fst_size <= 0x1000000)
              ? malloc(fst_size) : NULL;
-    if (!arc->fst || fseek(arc->file, (long)fst_offset, SEEK_SET) != 0 ||
-        fread(arc->fst, 1, fst_size, arc->file) != fst_size ||
+    if (!arc->fst || !disc_reader_read(arc->reader, fst_offset, fst_size, arc->fst) ||
         !iso_build_entries(arc, fst_size)) {
         fprintf(stderr, "Unreadable disc FST: %s\n", path);
         iso_close(arc);
@@ -290,14 +263,13 @@ const char* iso_entry_host_path(ISOArchive* arc, int index) {
 
 /* Read raw image bytes (image backend only): sys/ regions for extraction. */
 bool iso_read_raw(ISOArchive* arc, uint32_t offset, uint32_t size, void* dest) {
-    if (!arc || !arc->file || arc->is_dir) return false;
-    if (fseek(arc->file, (long)offset, SEEK_SET) != 0) return false;
-    return fread(dest, 1, size, arc->file) == size;
+    if (!arc || !arc->reader || arc->is_dir) return false;
+    return disc_reader_read(arc->reader, offset, size, dest);
 }
 
 void iso_close(ISOArchive* arc) {
     if (!arc) return;
-    if (arc->file) fclose(arc->file);
+    if (arc->reader) disc_reader_close(arc->reader);
     if (arc->cur_file) fclose(arc->cur_file);
     if (arc->host_paths) {
         for (int i = 0; i < arc->fst_count; i++) free(arc->host_paths[i]);
@@ -310,7 +282,6 @@ void iso_close(ISOArchive* arc) {
         }
         free(arc->entries);
     }
-    if (arc->rvz_data) free(arc->rvz_data);
     free(arc->path);
     free(arc);
 }
@@ -345,13 +316,10 @@ bool iso_extract_file(ISOArchive* arc, int index, void** out_data, size_t* out_s
     uint32_t file_size = entry->size;
 
     /* GC disc FST offsets are absolute byte offsets */
-    fseek(arc->file, file_offset, SEEK_SET);
-
-    void* data = malloc(file_size);
+    void* data = malloc(file_size ? file_size : 1);
     if (!data) return false;
 
-    size_t read = fread(data, 1, file_size, arc->file);
-    if (read != file_size) {
+    if (arc->is_dir || !disc_reader_read(arc->reader, file_offset, file_size, data)) {
         free(data);
         return false;
     }
@@ -717,8 +685,7 @@ int iso_file_read_at(ISOArchive* arc, int index, unsigned int offset,
             if (fseek(arc->cur_file, (long)offset, SEEK_SET) != 0) return -1;
             if (fread(dest, 1, to_read, arc->cur_file) != to_read) return -1;
         } else {
-            if (fseek(arc->file, (long)(e->offset + offset), SEEK_SET) != 0) return -1;
-            if (fread(dest, 1, to_read, arc->file) != to_read) return -1;
+            if (!disc_reader_read(arc->reader, (uint64_t)e->offset + offset, to_read, dest)) return -1;
         }
     }
     if (to_read < size)
