@@ -30,7 +30,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | ID | Task | Deps | Lane | Status |
 |---|---|---|---|---|
 | P0.1 | Fork repo, create `online` integration branch | – | git | DONE (fork Jacob-Tate/smb2-pc, branch `online`) |
-| P0.2 | WSL toolchain + decomp + SDL2 deps | – | env | BLOCKED (WSL vhdx locked by another process, user to fix) |
+| P0.2 | WSL toolchain + decomp + SDL2 deps | – | env | IN PROGRESS (orchestrator, 2026-11-17) |
 | P0.3 | `tools/win_build.sh` wrapper + smoke test | P0.2 | build | TODO |
 | P0.4 | Headless test harness doc + smoke scripts | P0.3 | tools | TODO |
 | A1 | Default to windowed instead of fullscreen | P0.3 | settings | TODO |
@@ -38,9 +38,13 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | TODO |
 | B3 | RVZ in dialogs, installer, help text, gamedata.c | B2 | disc+installer | TODO |
 | B4 | RVZ verification vs. the user's ISO | B2 | disc | TODO |
-| C1 | Steam Controller diagnosis (research part needs no build) | – / P0.3 for the run | input | IN PROGRESS (research only, 2026-11-17) |
-| C2 | Steam Controller fix | C1 | input | TODO |
-| D1 | Dear ImGui integration: SDL2 + OpenGL backend | P0.3 | overlay | TODO |
+| C1 | Steam Controller diagnosis (research) | – | input | DONE (docs/handoff/C1.md) |
+| C2a | `--list-controllers` diagnostic flag (SDL2, before migration) | P0.3 | input | TODO |
+| C2b | SDL3 3.4.x static build for i686 + x86_64 MinGW (`tools/build_sdl3_mingw.sh`) | P0.2 | env | TODO |
+| C2c | Port platform/video/render/audio/assets glue to SDL3 | C2b, P0.4 | platform | TODO |
+| C2d | Port input to SDL3 gamepad API; Steam Controller works | C2c | input | TODO |
+| C2e | README/docs for SDL3; pin version | C2d | docs | TODO |
+| D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | TODO |
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | TODO |
 | D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | TODO |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
@@ -90,6 +94,7 @@ P0.2 ─┴─ P0.3 ─┬─ P0.4
 | D-4 | The project gets a C++ language (`project(... LANGUAGES C CXX)`) for ImGui and the netplay client. Game code stays C. Overlay code goes in `src/overlay/`, netplay in `src/netplay/`. | ImGui is C++. Keep the C game/shim boundary clean via `extern "C"` headers. |
 | D-5 | RVZ is decoded **natively in C** (`src/assets/rvz.c`) with vendored zstd (decompressor only). Supported: GameCube RVZ, compression zstd or none. bzip2/LZMA/LZMA2 RVZ is rejected with a clear message ("re-convert in Dolphin with zstd"). | Dolphin's default RVZ compression is zstd. Avoids a Rust (nod) dependency in a mingw cross build. |
 | D-6 | Online sessions start from a **fresh deterministic boot** of the game with a session memory card (no real saves read or written), and lockstep runs from frame 0. | Removes boot-time and save-data differences between PCs; simplest correct start. |
+| D-8 | **Migrate the port from SDL2 2.30.9 to SDL3 (3.4.10 or newer 3.4.x), statically linked** (C2b–C2e). The overlay (D1+) is built on the SDL3 ImGui backend, so D1 waits for C2c. | C1 found: the new Steam Controller ("Triton", VID 0x28DE PID 0x1302–0x1305) is only supported by SDL3 ≥ 3.4.0 (`SDL_hidapi_steam_triton.c`, on by default on Windows); no SDL2 release has it. sdl2-compat can't be linked statically on MinGW. Official SDL3 MinGW devel package is DLL-only → build static libs from source. Estimate ~330 `SDL_` references in 20 files. |
 | D-7 | Subagents never edit this file. They write `docs/handoff/<ID>.md` and return a report; the orchestrator updates this file. | No merge conflicts on the plan between parallel worktrees. |
 
 ### Open questions for the user (defaults in bold; proceed with default if no answer)
@@ -221,6 +226,13 @@ In WSL these are under `/mnt/c/Users/jacob/source/super_monkey/`. WSL distro: `U
   `wsl -d Ubuntu -- bash -lc "cd /mnt/c/<path to repo or worktree> && tools/win_build.sh [x64|i686|both]"`
   It must accept absolute `SMB2_DECOMP_DIR`, `LLVM_MINGW_ROOT` and SDL deps paths so it works
   from any git worktree (worktrees don't contain the gitignored `mingw_deps/`).
+- **Calling WSL from the Bash tool (Git Bash) – gotchas:**
+  - Git Bash rewrites `/mnt/c/...` arguments into `C:/Program Files/Git/mnt/c/...`. Prefix the
+    call with `MSYS_NO_PATHCONV=1`.
+  - `wsl -- bash -lc '...$var...'` loses `$` expansions. Write the commands to a script file
+    (scratchpad or `tools/`) and run `MSYS_NO_PATHCONV=1 wsl -d Ubuntu -- bash /mnt/c/.../script.sh`.
+  - WSL output may contain NUL bytes (UTF-16 from wsl.exe itself): pipe through `tr -d '\0'`.
+  - WSL distro is Ubuntu 26.04, Python 3.14; 32 cores.
 - Output: `build64/bin/smb2_pc_port.exe` (+ `assets/`), `build32/bin/...`.
 - Run from Windows: `build64\bin\smb2_pc_port.exe --iso "C:\Users\jacob\source\super_monkey\Super Monkey Ball 2 (USA).iso" --save-dir <temp dir>`.
   Always pass a throwaway `--save-dir` in tests so the user's saves/settings are untouched.
@@ -342,7 +354,24 @@ Until then, work locally on `online` without pushing.
   (c) game added to Steam as a non-Steam game and started from Steam. Record results in §8.
 - **Output**: diagnosis + chosen fix list for C2 (answers Q-1).
 
-### C2 Steam Controller fix
+### C2a–C2e (supersede "C2" below; full specs in `docs/handoff/C1.md` "FOLLOW-UPS" and §4–6)
+- **C2a** `--list-controllers` (SDL2): files `src/main/main.c`, `src/input/input_sdl2.c`, `include/input.h`;
+  prints the C1.md §6 output and exits 0 without a window. User runs it with the controller plugged in.
+- **C2b** SDL3 static libs: new `tools/build_sdl3_mingw.sh` (CMake, `-DSDL_SHARED=OFF -DSDL_STATIC=ON`,
+  toolchains `cmake/mingw32.cmake` and `cmake/llvm-mingw64.cmake`) into `mingw_deps/sdl3/{i686,x86_64}-w64-mingw32`.
+  Acceptance: a hello program links statically with both toolchains and runs without SDL3.dll.
+- **C2c** platform glue → SDL3: `platform_sdl2.c`, `pc_settings.c` (fullscreen/display modes: biggest part),
+  `pc_file_dialog.c`, `render_opengl.c`, `render_d3d12.c`, `audio_miniaudio.c`, `assets.c` (don't free
+  `SDL_GetBasePath` under SDL3), `main.c`, `perf.h`, `platform.h`, `video_shim.c`, `pc_quit.c`, CMakeLists.
+  Keep file names (renaming `*_sdl2.c` is optional and done last). Acceptance: boots in GL and D3D12, windowed /
+  borderless / fullscreen; `settings.dat` and save paths unchanged; P0.4 smoke scripts pass on both arches.
+- **C2d** input → SDL3 gamepad API: `input_sdl2.c`, `include/input.h`, `button_prompts.*`, controller
+  events in `platform_sdl2.c`. `SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS` is gone: re-verify the
+  Nintendo label mapping. Acceptance: vpad scripts give identical traces for Xbox/PS4/PS5/Switch, hot-plug
+  without double connect, and (REVIEW) the user's Steam Controller drives the game with Steam closed.
+- **C2e** README build steps (SDL3), credits/licence, version pin.
+
+### C2 Steam Controller fix (original notes; superseded by C2a–C2e)
 Candidate fixes (choose from C1's results; likely several):
 1. `SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_STEAM, "1")` before the game-controller subsystem is
    initialised (note `platform_sdl2.c:113` inits it in `SDL_Init`, before `input_init`: the hint
@@ -596,3 +625,7 @@ Candidate fixes (choose from C1's results; likely several):
   `%LOCALAPPDATA%\wsl\{a221e025-...}\ext4.vhdx` (another process holds the disk). Asked the user to fix
   (Docker Desktop / backup / antivirus / Disk Management attach; or reboot).
 - While blocked: started E1 (determinism audit) and the research part of C1 as read-only Sonnet subagents.
+- WSL fixed by the user. User installed `mingw-w64 nsis`. SDL2 2.30.9 built/unpacked into
+  `smb2-pc/mingw_deps/{i686,x86_64}-w64-mingw32` (i686 built in `~/sdl2build32` in the WSL fs).
+  Decomp copy of the disc: `smb2-decomp/orig/GM2E8P/game.rvz`. llvm-mingw → `super_monkey/toolchains/`.
+- C1 DONE → decision D-8: migrate to SDL3 (C2a–C2e); D1 now depends on C2c.
