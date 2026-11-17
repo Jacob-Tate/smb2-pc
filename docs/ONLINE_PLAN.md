@@ -53,7 +53,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E2 | Deterministic session mode (`--det-session`) | E1 | game shim | IN PROGRESS (task/E2, 2026-11-17) |
 | E3 | Input record/replay + state checksum | E2 | input+shim | TODO |
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | TODO |
-| E5 | Protocol header + relay server (port from partyboard) | E1 | server | IN PROGRESS (task/E5, 2026-11-17) |
+| E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | TODO |
 | E7 | Online lobby UI in the overlay | D4, E6 | overlay+netplay | TODO |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | TODO |
