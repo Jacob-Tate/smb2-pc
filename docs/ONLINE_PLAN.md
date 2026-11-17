@@ -34,8 +34,8 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | P0.3 | `tools/win_build.sh` wrapper + smoke test | P0.2 | build | DONE (fa5fad2) |
 | P0.4 | Headless test harness doc + smoke scripts | P0.3 | tools | IN PROGRESS (task/P0.4, 2026-11-17) |
 | A1 | Default to windowed instead of fullscreen | P0.3 | settings | REVIEW (merged 81bb9a9; user visual check pending) |
-| B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | IN PROGRESS (task/B1, 2026-11-17) |
-| B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | TODO |
+| B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | DONE (0be1727) |
+| B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | IN PROGRESS (task/B2 incl. B4, 2026-11-17) |
 | B3 | RVZ in dialogs, installer, help text, gamedata.c | B2 | disc+installer | TODO |
 | B4 | RVZ verification vs. the user's ISO | B2 | disc | TODO |
 | C1 | Steam Controller diagnosis (research) | – | input | DONE (docs/handoff/C1.md) |
@@ -667,3 +667,6 @@ Candidate fixes (choose from C1's results; likely several):
   `display=windowed`. Note: `--exit-frame`/`--input-script` force windowed unless `--fullscreen` is given.
   **User check (REVIEW):** delete or move `settings.dat`, start the game → centred window with a title bar;
   Alt+Enter toggles borderless; Options > Game Screen still switches modes.
+- B1 merged (0be1727): `src/assets/disc_reader.{c,h}`; extraction manifest identical to before, verify OK.
+  The remembered disc path lives in `settings.dat` inside `--save-dir`, so test runs don't touch the user's.
+- B2 started (task/B2, also covers B4 verification).
