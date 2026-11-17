@@ -32,7 +32,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | P0.1 | Fork repo, create `online` integration branch | – | git | DONE (fork Jacob-Tate/smb2-pc, branch `online`) |
 | P0.2 | WSL toolchain + decomp + SDL2 deps | – | env | DONE (2026-11-17) |
 | P0.3 | `tools/win_build.sh` wrapper + smoke test | P0.2 | build | DONE (fa5fad2) |
-| P0.4 | Headless test harness doc + smoke scripts | P0.3 | tools | IN PROGRESS (task/P0.4, 2026-11-17) |
+| P0.4 | Headless test harness doc + smoke scripts | P0.3 | tools | DONE (bc95b0b) |
 | A1 | Default to windowed instead of fullscreen | P0.3 | settings | REVIEW (merged 81bb9a9; user visual check pending) |
 | B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | DONE (0be1727) |
 | B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | IN PROGRESS (task/B2 incl. B4, 2026-11-17) |
@@ -41,8 +41,8 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | C1 | Steam Controller diagnosis (research) | – | input | DONE (docs/handoff/C1.md) |
 | C2a | `--list-controllers` diagnostic flag | – | input | SKIPPED (SDL2 can't support the controller anyway; the flag moves into C2d, on SDL3) |
 | C2b | SDL3 3.4.x static build for i686 + x86_64 MinGW (`tools/build_sdl3_mingw.sh`) | P0.2 | env | DONE (49c8af2) |
-| C2c | Port platform/video/render/audio/assets glue to SDL3 | C2b, P0.4 | platform | TODO |
-| C2d | Port input to SDL3 gamepad API; Steam Controller works | C2c | input | TODO |
+| C2c | Port platform/video/render/audio/assets glue to SDL3 **together with C2d** (one exe can't link SDL2 and SDL3) | C2b, P0.4 | platform+input | IN PROGRESS (task/C2c covers C2c+C2d, 2026-11-17) |
+| C2d | Port input to SDL3 gamepad API; Steam Controller works | (inside C2c) | input | IN PROGRESS (in task/C2c) |
 | C2e | README/docs for SDL3; pin version | C2d | docs | TODO |
 | D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | TODO |
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | TODO |
@@ -58,7 +58,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E7 | Online lobby UI in the overlay | D4, E6 | overlay+netplay | TODO |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | TODO |
 | E9 | Disconnect → CPU/neutral pad, desync handling | E6 | netplay | TODO |
-| E10 | Server Docker image, CI, Portainer stack | E5 | server | IN PROGRESS (task/E10, 2026-11-17) |
+| E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
@@ -684,3 +684,13 @@ Candidate fixes (choose from C1's results; likely several):
 - No Docker on this PC (Windows or WSL): E10's image is verified by GitHub Actions after pushing `online`.
 - Started E10 (task/E10) and E2 (task/E2). E2 and C2c both touch main.c / video_shim.c / pc_quit.c:
   whichever merges second rebases.
+- P0.4 merged (bc95b0b): `docs/testing.md`, `tools/smoke/boot_to_menu.sh` (mode 1/32) and
+  `tools/smoke/party_race_2p.sh` (mode 4/186, pad on port 2 via new `VADDX2` script tokens); both PASS on
+  the orchestrator's re-run. Limits: one virtual pad (3–4 scripted players need an array); fixed frame timings.
+- E10 merged (ce09eff): Dockerfile, `.dockerignore`, `server/portainer-stack.yml` (node label `partyboard=true`,
+  UDP 7855 host mode), `.github/workflows/server.yml`. **CI run 44203768447 green**: image built, integration
+  test against the container passed, published to `ghcr.io/jacob-tate/smb2-server` (latest + sha).
+  **USER steps** (docs/handoff/E10.md): make the GitHub package `smb2-server` public; Portainer > Stacks >
+  Add stack `smb2` with `server/portainer-stack.yml`; open UDP 7855; check with
+  `docker exec $(docker ps -qf name=smb2_relay) smb2-server-test 127.0.0.1 7855`.
+- C2c started as one task covering C2c + C2d (task/C2c): one exe can't link SDL2 and SDL3 at once.
