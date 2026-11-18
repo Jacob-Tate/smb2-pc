@@ -100,6 +100,7 @@ static void sanitize(PcSettings* s) {
     s->language = clampi(s->language, 0, PCS_LANG_COUNT - 1);
     if (s->fps != PCS_FPS_UNCAPPED && s->fps != PCS_FPS_DISPLAY)
         s->fps = clampi(s->fps, 60, 1000);
+    s->show_fps = clampi(s->show_fps, 0, PCS_SHOWFPS_COUNT - 1);
 }
 
 int pcs_parse_fps(const char* v) {
@@ -218,6 +219,7 @@ static void load_file(PcSettings* s) {
             s->language = l < 0 ? PCS_LANG_AUTO : l;
         }
         else if (!strcmp(line, "fps"))     s->fps = pcs_parse_fps(v);
+        else if (!strcmp(line, "show_fps")) s->show_fps = atoi(v);
         else if (!strcmp(line, "update_check")) s->update_check = atoi(v) ? 1 : 0;
         else if (!strcmp(line, "update_last"))  s->update_last = strtoll(v, NULL, 10);
         else if (!strcmp(line, "update_skip"))
@@ -261,6 +263,7 @@ void pcs_save(void) {
     if (s_file.fps == PCS_FPS_UNCAPPED) fprintf(f, "fps=uncapped\n");
     else if (s_file.fps == PCS_FPS_DISPLAY) fprintf(f, "fps=display\n");
     else fprintf(f, "fps=%d\n", s_file.fps);
+    fprintf(f, "show_fps=%d\n", s_file.show_fps);
     fprintf(f, "update_check=%d\nupdate_last=%lld\n", s_file.update_check, s_file.update_last);
     if (s_file.update_skip[0]) fprintf(f, "update_skip=%s\n", s_file.update_skip);
     if (s_file.iso_path[0]) fprintf(f, "iso=%s\n", s_file.iso_path);
@@ -887,4 +890,194 @@ int pc_settings_overlay_take_request(void) {
     int r = s_overlay_req;
     s_overlay_req = 0;
     return r;
+}
+
+/* ------------------------------------------------- choice API (overlay, D4) */
+/* A uniform "pick one of N" view of the menu items, used by the ImGui overlay
+ * rows and the --overlay-test-set hook.  Every set goes through
+ * pcs_item_begin_edit / pcs_item_step / pcs_item_confirm, i.e. exactly the
+ * code the Options > Game Screen page runs. */
+static const char* const s_lbl_display[3] = { "Windowed", "Fullscreen", "Borderless" };
+static const char* const s_lbl_onoff[2] = { "Off", "On" };
+static const char* const s_lbl_msaa[4] = { "Off", "2x", "4x", "8x" };
+static const char* const s_lbl_renderer[2] = { "OpenGL", "Direct3D 12" };
+static const char* const s_lbl_aspect[2] = { "Auto (4:3 / 16:9)", "Stretch" };
+static const char* const s_lbl_buttons[5] = { "Auto", "GameCube", "PlayStation", "Xbox", "Switch" };
+static const char* const s_lbl_language[PCS_LANG_COUNT] = {
+    "Auto", "English", "Deutsch", "Fran\xC3\xA7" "ais", "Espa\xC3\xB1ol", "Italiano", "Japanese" };
+static const char* const s_lbl_showfps[PCS_SHOWFPS_COUNT] = {
+    "Off", "Top left", "Top right", "Bottom left", "Bottom right" };
+
+int pcs_choice_count(int item) {
+    switch (item) {
+    case PCS_ITEM_DISPLAY: return 3;
+    case PCS_ITEM_RESOLUTION: build_res_list(g_pcs.display_mode); return s_nres;
+    case PCS_ITEM_VSYNC: case PCS_ITEM_ASPECT: return 2;
+    case PCS_ITEM_RENDERER: return PCS_RENDERER_COUNT;
+    case PCS_ITEM_FPS: return FPS_NVALS;
+    case PCS_ITEM_MSAA: return 4;
+    case PCS_ITEM_BUTTONS: return PCB_SETTING_MENU_COUNT;
+    case PCS_ITEM_LANGUAGE: return PCS_LANG_COUNT;
+    case PCS_CHOICE_SHOW_FPS: return PCS_SHOWFPS_COUNT;
+    }
+    return 0;
+}
+
+const char* pcs_choice_label(int item, int i) {
+    static char buf[48];
+    if (i < 0 || i >= pcs_choice_count(item)) return "";
+    switch (item) {
+    case PCS_ITEM_DISPLAY: return s_lbl_display[i];
+    case PCS_ITEM_RESOLUTION: snprintf(buf, sizeof buf, "%dx%d", s_res[i].w, s_res[i].h); return buf;
+    case PCS_ITEM_VSYNC: return s_lbl_onoff[i];
+    case PCS_ITEM_ASPECT: return s_lbl_aspect[i];
+    case PCS_ITEM_RENDERER: return s_lbl_renderer[i];
+    case PCS_ITEM_FPS:
+        if (s_fps_vals[i] == PCS_FPS_UNCAPPED) return "Uncapped";
+        if (s_fps_vals[i] == PCS_FPS_DISPLAY) {
+            extern int platform_display_refresh_hz(void);
+            int hz = platform_display_refresh_hz();
+            if (hz > 0) snprintf(buf, sizeof buf, "Display (%d Hz)", hz);
+            else snprintf(buf, sizeof buf, "Display refresh rate");
+            return buf;
+        }
+        if (s_fps_vals[i] == 60) return "60 (original)";
+        snprintf(buf, sizeof buf, "%d", s_fps_vals[i]);
+        return buf;
+    case PCS_ITEM_MSAA: return s_lbl_msaa[i];
+    case PCS_ITEM_BUTTONS: return s_lbl_buttons[i];
+    case PCS_ITEM_LANGUAGE: return s_lbl_language[i];
+    case PCS_CHOICE_SHOW_FPS: return s_lbl_showfps[i];
+    }
+    return "";
+}
+
+/* index of the current value, -1 if it is not one of the choices */
+int pcs_choice_current(int item) {
+    int i;
+    switch (item) {
+    case PCS_ITEM_DISPLAY: return g_pcs.display_mode;
+    case PCS_ITEM_RESOLUTION: build_res_list(g_pcs.display_mode); return res_index(g_pcs.width, g_pcs.height);
+    case PCS_ITEM_VSYNC: return g_pcs.vsync;
+    case PCS_ITEM_ASPECT: return g_pcs.aspect;
+    case PCS_ITEM_RENDERER: return g_pcs.renderer;
+    case PCS_ITEM_FPS:
+        for (i = 0; i < FPS_NVALS; i++) if (s_fps_vals[i] == g_pcs.fps) return i;
+        return -1;
+    case PCS_ITEM_MSAA:
+        for (i = 0; i < 4; i++) if (s_msaa_vals[i] == g_pcs.msaa) return i;
+        return -1;
+    case PCS_ITEM_BUTTONS: return g_pcs.button_style;
+    case PCS_ITEM_LANGUAGE: return g_pcs.language;
+    case PCS_CHOICE_SHOW_FPS: return g_pcs.show_fps;
+    }
+    return -1;
+}
+
+bool pcs_choice_set(int item, int idx) {
+    int n = pcs_choice_count(item), k;
+    if (idx < 0 || idx >= n) return false;
+    if (item == PCS_CHOICE_SHOW_FPS) {
+        if (!s_loaded) pcs_load();
+        g_pcs.show_fps = s_file.show_fps = idx;
+        pcs_save();
+        printf("[settings] Show FPS -> %s\n", s_lbl_showfps[idx]);
+        return true;
+    }
+    if (!pcs_item_enabled(item)) return false;
+    pcs_item_begin_edit(item);
+    for (k = 0; k <= n && pcs_choice_current(item) != idx; k++)
+        if (!pcs_item_step(item, 1)) break;
+    if (pcs_choice_current(item) != idx) {
+        pcs_item_cancel(item);
+        return false;
+    }
+    pcs_item_confirm(item);
+    return true;
+}
+
+bool pcs_choice_enabled(int item) {
+    return item == PCS_CHOICE_SHOW_FPS || pcs_item_enabled(item);
+}
+
+/* applies on restart and differs from what this run started with */
+bool pcs_item_restart_pending(int item) {
+    switch (item) {
+    case PCS_ITEM_MSAA: return g_pcs.msaa != pcs_active_msaa();
+    case PCS_ITEM_RENDERER: return g_pcs.renderer != pcs_active_renderer();
+    case PCS_ITEM_LANGUAGE: return pcs_language_locale(g_pcs.language) != pcs_active_locale();
+    }
+    return false;
+}
+
+void pcs_set_volume(int volume) {
+    pcs_item_begin_edit(PCS_ITEM_VOLUME);
+    g_pcs.volume = clampi(volume, 0, 100);
+    pcs_apply_volume();
+    pcs_item_confirm(PCS_ITEM_VOLUME);
+}
+
+void pcs_reset_window_size(void) {
+    int w, h;
+    if (!s_loaded) pcs_load();
+    fit_default_size(&w, &h);
+    g_pcs.display_mode = s_file.display_mode = PCS_WINDOWED;
+    g_pcs.width = w; g_pcs.height = h;
+    pcs_apply_video();
+    s_file.width = w; s_file.height = h;
+    s_overrides &= ~(PCS_OVR_MODE | PCS_OVR_SIZE);
+    pcs_save();
+    printf("[settings] window size reset to %dx%d (windowed)\n", w, h);
+}
+
+/* --overlay-test-set key=value: the same setters the overlay rows call. */
+static int match_label(int item, const char* v) {
+    int i, n = pcs_choice_count(item);
+    for (i = 0; i < n; i++)
+        if (!SDL_strcasecmp(v, pcs_choice_label(item, i))) return i;
+    return -1;
+}
+static int find_val(const int* vals, int n, int v) {
+    int i;
+    for (i = 0; i < n; i++) if (vals[i] == v) return i;
+    return -1;
+}
+bool pcs_test_set(const char* kv) {
+    char key[32], val[64];
+    const char* eq = kv ? strchr(kv, '=') : NULL;
+    int item = -1, idx = -1;
+    bool ok = false;
+    if (!eq || (size_t)(eq - kv) >= sizeof key) goto done;
+    snprintf(key, sizeof key, "%.*s", (int)(eq - kv), kv);
+    snprintf(val, sizeof val, "%s", eq + 1);
+    if (!strcmp(key, "volume")) {
+        pcs_set_volume(atoi(val));
+        ok = true;
+        goto done;
+    }
+    if (!strcmp(key, "display"))         { item = PCS_ITEM_DISPLAY; idx = match_label(item, val); }
+    else if (!strcmp(key, "resolution")) { item = PCS_ITEM_RESOLUTION; idx = match_label(item, val); }
+    else if (!strcmp(key, "vsync"))      { item = PCS_ITEM_VSYNC;
+        idx = !SDL_strcasecmp(val, "on") ? 1 : !SDL_strcasecmp(val, "off") ? 0 : atoi(val) ? 1 : 0; }
+    else if (!strcmp(key, "fps"))        { item = PCS_ITEM_FPS; idx = find_val(s_fps_vals, FPS_NVALS, pcs_parse_fps(val)); }
+    else if (!strcmp(key, "msaa"))       { item = PCS_ITEM_MSAA; idx = find_val(s_msaa_vals, 4, atoi(val)); }
+    else if (!strcmp(key, "renderer"))   { item = PCS_ITEM_RENDERER;
+        idx = (!SDL_strcasecmp(val, "d3d12") || !SDL_strcasecmp(val, "dx12")) ? 1 :
+              !SDL_strcasecmp(val, "gl") ? 0 : match_label(item, val); }
+    else if (!strcmp(key, "aspect"))     { item = PCS_ITEM_ASPECT;
+        idx = !SDL_strcasecmp(val, "stretch") ? 1 : !SDL_strcasecmp(val, "auto") ? 0 : -1; }
+    else if (!strcmp(key, "buttons"))    { item = PCS_ITEM_BUTTONS; idx = match_label(item, val);
+        if (idx < 0) {
+            static const char* const k[] = { "auto", "gc", "ps", "xbox", "switch" };
+            int i;
+            for (i = 0; i < 5; i++) if (!SDL_strcasecmp(val, k[i])) idx = i;
+        } }
+    else if (!strcmp(key, "language"))   { item = PCS_ITEM_LANGUAGE; idx = pcs_parse_language(val); }
+    else if (!strcmp(key, "show_fps"))   { item = PCS_CHOICE_SHOW_FPS; idx = match_label(item, val);
+        if (idx < 0) idx = atoi(val); }
+    if (item >= 0 && idx >= 0) ok = pcs_choice_set(item, idx);
+done:
+    printf("[overlay-test] set %s: %s\n", kv ? kv : "(null)", ok ? "ok" : "FAILED");
+    fflush(stdout);
+    return ok;
 }

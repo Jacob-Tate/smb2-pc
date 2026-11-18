@@ -17,6 +17,7 @@ enum { PCS_RENDERER_GL = 0, PCS_RENDERER_D3D12 = 1, PCS_RENDERER_COUNT };
 /* Game language (docs/language.md).  Auto follows the Windows UI language. */
 enum { PCS_LANG_AUTO = 0, PCS_LANG_EN, PCS_LANG_DE, PCS_LANG_FR, PCS_LANG_ES,
        PCS_LANG_IT, PCS_LANG_JA, PCS_LANG_COUNT };
+enum { PCS_SHOWFPS_OFF = 0, PCS_SHOWFPS_TL, PCS_SHOWFPS_TR, PCS_SHOWFPS_BL, PCS_SHOWFPS_BR, PCS_SHOWFPS_COUNT };
 enum { PCS_FPS_UNCAPPED = 0, PCS_FPS_DISPLAY = -1 };
 
 typedef struct {
@@ -34,6 +35,7 @@ typedef struct {
     int fps;             /* rendered frames per second (docs/hfr.md): 60 =
                           * one per game tick (no interpolation), N > 60,
                           * PCS_FPS_UNCAPPED, PCS_FPS_DISPLAY (refresh rate) */
+    int show_fps;        /* PCS_SHOWFPS_*: FPS counter corner (drawn by D5) */
     int update_check;    /* automatic update check at start, at most daily (docs/updater.md) */
     long long update_last;   /* time() of the last completed update check, 0 = never */
     char update_skip[32];    /* release the user chose "Skip this version" for */
@@ -107,6 +109,23 @@ void pcs_item_begin_edit(int item);     /* remember value for cancel */
 bool pcs_item_step(int item, int dir);  /* -1/+1; true if changed */
 void pcs_item_confirm(int item);        /* apply deferred + save */
 void pcs_item_cancel(int item);         /* restore + re-apply */
+
+/* ---- choice view of the items (ImGui overlay rows, D4) ----
+ * item: a PCS_ITEM_* (DISPLAY, RESOLUTION, VSYNC, FPS, MSAA, RENDERER, ASPECT,
+ * BUTTONS, LANGUAGE) or PCS_CHOICE_SHOW_FPS.  Sets go through the same
+ * begin_edit/step/confirm code as the Game Screen menu (apply + save). */
+enum { PCS_CHOICE_SHOW_FPS = 100 };
+int         pcs_choice_count(int item);
+const char* pcs_choice_label(int item, int i);   /* English; static buffer for some */
+int         pcs_choice_current(int item);        /* -1: not one of the choices */
+bool        pcs_choice_set(int item, int idx);   /* false: not possible / disabled */
+bool        pcs_choice_enabled(int item);
+bool        pcs_item_restart_pending(int item);  /* changed, applies on restart */
+void        pcs_set_volume(int volume);          /* 0..100, applied + saved */
+void        pcs_reset_window_size(void);         /* default windowed size, applied + saved */
+/* "--overlay-test-set key=value": display resolution vsync fps msaa renderer
+ * aspect volume buttons language show_fps; same setters as the UI rows. */
+bool        pcs_test_set(const char* kv);
 
 /* Controller Sticks screen (src/game/shim/pc_stick_menu.c): run it modally
  * (`captured`: the frame behind is already captured, as in the F1 overlay),

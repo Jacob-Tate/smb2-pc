@@ -196,6 +196,13 @@ add_executable(smb2_pc_port ${SOURCES})
 add_library(smb2_overlay STATIC
     src/overlay/overlay.cpp
     src/overlay/overlay_d3d12.cpp
+    src/overlay/overlay_ui.cpp
+    src/overlay/tab_video.cpp
+    src/overlay/tab_audio.cpp
+    src/overlay/tab_input.cpp
+    src/overlay/tab_game.cpp
+    src/overlay/tab_online.cpp
+    src/overlay/tab_interface.cpp
     third_party/imgui/imgui.cpp
     third_party/imgui/imgui_draw.cpp
     third_party/imgui/imgui_tables.cpp
