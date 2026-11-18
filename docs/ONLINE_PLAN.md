@@ -869,3 +869,5 @@ Candidate fixes (choose from C1's results; likely several):
   reviewed (a mid-branch commit had a bad sed, repaired), hot-plug/FPS screenshot viewed (D3D12) OK.
   **User REVIEW**: F1 open/close, Show FPS corner setting, plug/unplug a controller -> toast. Screenshots in docs/handoff/D5/.
 - E7 started (task/E7) in parallel with E9 (both touch src/netplay/; E7 keeps netplay.c edits additive).
+- Orchestrator: suite on merged online with D5 (4f4b48b build): boot_to_menu, party_race_2p, overlay_settings, record_replay,
+  lobby_instances (local server) all PASS.
