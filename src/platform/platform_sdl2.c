@@ -163,8 +163,8 @@ static void sdl2_poll_events(PlatformContext* ctx) {
 
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
-        /* ImGui overlay (F2 toggles; D3 adds input routing: for now the game
-         * still sees every event) */
+        /* ImGui overlay (F2 toggles).  Game input is gated at the pad sampling
+         * point (input_sdl2.c), not here. */
         (void)overlay_process_event(&event);
         switch (event.type) {
             case SDL_EVENT_QUIT:
@@ -202,6 +202,7 @@ static void sdl2_poll_events(PlatformContext* ctx) {
                 break;
         }
     }
+    overlay_poll_tick();   /* D3: controller chord + mouse cursor idle */
 }
 
 static bool sdl2_should_close(PlatformContext* ctx) {

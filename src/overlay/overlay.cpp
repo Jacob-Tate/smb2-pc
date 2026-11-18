@@ -23,17 +23,37 @@ bool            s_frame_started;
 bool            s_start_open;     // --overlay-open pending (applied at init)
 long            s_open_from = -1, s_open_to = -1;
 bool            s_show_demo;
+Uint64          s_last_mouse_ms;
+bool            s_cursor_shown = true;
+Uint64          s_chord_since;    // 0 = Back+Start not both held
+bool            s_chord_fired;    // fired for this hold; re-arms after release
+bool            s_focus_pending;
 
 void* s_d3d12_cl;          // command list to draw into (set by the renderer around overlay_render)
+
+// Back + Start both held on one gamepad (read from SDL state)
+bool chord_buttons_down() {
+    bool both = false;
+    int n = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&n);
+    for (int i = 0; ids && i < n && !both; i++) {
+        SDL_Gamepad* gp = SDL_GetGamepadFromID(ids[i]);
+        if (gp && SDL_GetGamepadButton(gp, SDL_GAMEPAD_BUTTON_BACK) && SDL_GetGamepadButton(gp, SDL_GAMEPAD_BUTTON_START))
+            both = true;
+    }
+    SDL_free(ids);
+    return both;
+}
 
 void build_ui() {
     ImGui::SetNextWindowPos(ImVec2(40, 40), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(420, 260), ImGuiCond_FirstUseEver);
+    if (s_focus_pending) { ImGui::SetNextWindowFocus(); s_focus_pending = false; }
     if (ImGui::Begin("SMB2 overlay (placeholder)")) {
         static float volume = 0.8f;
         static int   mode = 0;
         static bool  check = true;
-        ImGui::Text("Dear ImGui %s - F2 toggles", IMGUI_VERSION);
+        ImGui::Text("Dear ImGui %s - F2 / Guide / Back+Start (0.5 s) toggles", IMGUI_VERSION);
         ImGui::Text("Frame %ld, %.1f FPS", g_dbg_frame_counter, ImGui::GetIO().Framerate);
         ImGui::Separator();
         ImGui::SliderFloat("Volume", &volume, 0.0f, 1.0f);
@@ -68,7 +88,7 @@ bool overlay_init(SDL_Window* window, OverlayRenderer renderer) {
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;     // no imgui.ini next to the exe
     io.LogFilename = nullptr;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
     ImGui::StyleColorsDark();
     bool ok = renderer == OVERLAY_RENDERER_GL
         ? (ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext()) &&
@@ -79,6 +99,7 @@ bool overlay_init(SDL_Window* window, OverlayRenderer renderer) {
         ImGui::DestroyContext();
         return false;
     }
+    ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);   // any player's pad can navigate
     s_ready = true;
     if (s_start_open) overlay_set_open(true);
     printf("[overlay] Dear ImGui %s ready (%s)\n", IMGUI_VERSION,
@@ -102,6 +123,19 @@ bool overlay_process_event(const SDL_Event* e) {
         overlay_toggle();
         return true;
     }
+    switch (e->type) {   // cursor idle timer
+        case SDL_EVENT_MOUSE_MOTION: case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP: case SDL_EVENT_MOUSE_WHEEL:
+            s_last_mouse_ms = SDL_GetTicks();
+            break;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:   // Guide opens / closes
+            if (e->gbutton.button == SDL_GAMEPAD_BUTTON_GUIDE) { overlay_toggle(); return false; }
+            break;
+        case SDL_EVENT_GAMEPAD_ADDED: case SDL_EVENT_GAMEPAD_REMOVED:   // ImGui tracks pads even while closed
+            if (s_ready && !s_open) ImGui_ImplSDL3_ProcessEvent(e);
+            break;
+        default: break;
+    }
     if (!s_ready || !s_open) return false;
     ImGui_ImplSDL3_ProcessEvent(e);
     ImGuiIO& io = ImGui::GetIO();
@@ -113,6 +147,27 @@ bool overlay_process_event(const SDL_Event* e) {
             return io.WantCaptureKeyboard;
         default:
             return false;
+    }
+}
+
+// Once per platform_poll_events: controller chord (Back + Start held 0.5 s) and mouse cursor.
+void overlay_poll_tick(void) {
+    const Uint64 now = SDL_GetTicks();
+    const bool both = chord_buttons_down();
+    if (!both) { s_chord_since = 0; s_chord_fired = false; }
+    else if (!s_chord_fired) {
+        if (!s_chord_since) s_chord_since = now ? now : 1;
+        else if (now - s_chord_since >= 500) {
+            s_chord_fired = true;
+            overlay_toggle();
+            printf("[overlay] controller chord: %s\n", s_open ? "open" : "closed");
+        }
+    }
+    // cursor: visible while open, else hidden after 3 s without mouse activity
+    bool show = s_open || now - s_last_mouse_ms < 3000;
+    if (show != s_cursor_shown) {
+        if (show) SDL_ShowCursor(); else SDL_HideCursor();
+        s_cursor_shown = show;
     }
 }
 
@@ -149,8 +204,16 @@ bool overlay_is_open(void) { return s_open; }
 
 void overlay_set_open(bool open) {
     if (open && !s_ready) return;
+    if (open != s_open) {
+        printf("[overlay] %s (swapped frame %ld)\n", open ? "open" : "closed", g_dbg_frame_counter);
+        fflush(stdout);
+        if (open) s_focus_pending = true;   // gamepad nav needs a focused window
+    }
     s_open = open;
 }
+
+// open, or the chord is being held (so its Start press never reaches the game)
+bool overlay_input_blocked(void) { return s_open || chord_buttons_down(); }
 
 void overlay_toggle(void) { overlay_set_open(!s_open); }
 
