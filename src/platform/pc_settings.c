@@ -226,6 +226,10 @@ static void load_file(PcSettings* s) {
             snprintf(s->update_skip, sizeof s->update_skip, "%s", v);
         else if (!strcmp(line, "iso"))
             snprintf(s->iso_path, sizeof s->iso_path, "%s", v);
+        else if (!strcmp(line, "np_server"))
+            snprintf(s->np_server, sizeof s->np_server, "%s", v);
+        else if (!strcmp(line, "np_name"))
+            snprintf(s->np_name, sizeof s->np_name, "%s", v);
     }
     fclose(f);
     sanitize(s);
@@ -267,6 +271,8 @@ void pcs_save(void) {
     fprintf(f, "update_check=%d\nupdate_last=%lld\n", s_file.update_check, s_file.update_last);
     if (s_file.update_skip[0]) fprintf(f, "update_skip=%s\n", s_file.update_skip);
     if (s_file.iso_path[0]) fprintf(f, "iso=%s\n", s_file.iso_path);
+    if (s_file.np_server[0]) fprintf(f, "np_server=%s\n", s_file.np_server);
+    if (s_file.np_name[0]) fprintf(f, "np_name=%s\n", s_file.np_name);
     fclose(f);
     printf("[settings] saved %s\n", path);
 }
@@ -306,6 +312,15 @@ void pcs_set_iso_path(const char* path) {
     if (!s_loaded) pcs_load();
     snprintf(s_file.iso_path, sizeof s_file.iso_path, "%s", path ? path : "");
     snprintf(g_pcs.iso_path, sizeof g_pcs.iso_path, "%s", path ? path : "");
+    pcs_save();
+}
+
+void pcs_set_netplay(const char* server, const char* name) {
+    if (!s_loaded) pcs_load();
+    snprintf(s_file.np_server, sizeof s_file.np_server, "%s", server ? server : "");
+    snprintf(g_pcs.np_server, sizeof g_pcs.np_server, "%s", server ? server : "");
+    snprintf(s_file.np_name, sizeof s_file.np_name, "%s", name ? name : "");
+    snprintf(g_pcs.np_name, sizeof g_pcs.np_name, "%s", name ? name : "");
     pcs_save();
 }
 

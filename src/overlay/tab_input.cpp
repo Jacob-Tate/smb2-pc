@@ -27,7 +27,7 @@ void tab_input() {
         "Which button icons the game shows. Auto follows the controller in use.");
     if (button_row("Controller sticks...", nullptr,
             "Opens the Controller Sticks screen: GameCube gate shape, dead zone, sensitivity and calibration per controller. "
-            "This closes the overlay.")) {
+            "This closes the overlay. Not available while you are in an online lobby or session.", !online_locked())) {
         pc_stick_screen_request();
         request_close();
     }

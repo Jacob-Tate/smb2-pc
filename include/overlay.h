@@ -85,6 +85,11 @@ void overlay_d3d12_invalidate(void);
  * (open while a <= swapped frame < b; applied by overlay_render). */
 void overlay_test_open_at_start(void);
 void overlay_test_open_frames(long from, long to);
+/* --overlay-test-online-script "T:connect=HOST:PORT/NAME,T:host=DELAY,T:join=CODE|@FILE,T:codefile=FILE,T:port=P,
+ * T:start=N,T:leave,T:disconnect,T:leave_session" (E7): drives the Online tab's actions (the same functions its
+ * buttons call) from platform_poll_events; T = tick (poll count).  Returns false on a bad spec.  Spec must stay
+ * valid (argv). */
+bool overlay_test_online_script(const char* spec);
 /* --overlay-test-set key=value (repeatable): applied once at overlay_init through the
  * same setters the UI rows use (pcs_test_set; keys in pc_settings.h).  key_value must
  * stay valid (argv). */

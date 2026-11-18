@@ -37,7 +37,10 @@ const char* update_status(char* buf, size_t n) {
 
 void tab_game() {
     section("Game");
-    choice_row("Language", PCS_ITEM_LANGUAGE,
+    if (online_locked())
+        info_row("Language", "locked online",
+            "Online sessions force the same game language on every player, so it cannot be changed while you are in an online lobby or session.");
+    else choice_row("Language", PCS_ITEM_LANGUAGE,
         "Game language. Auto follows the Windows UI language (Japanese, otherwise English). "
         "Takes effect after you restart the game.");
 
@@ -48,15 +51,15 @@ void tab_game() {
             "The GameCube disc image (.iso, .gcm or .rvz) the game loads its data from. Changing it takes effect after a restart.");
         if (button_row("Choose a different disc image", nullptr,
                 "Forgets the saved disc image path. The next time you start the game it asks for the disc image again "
-                "(restart required).")) {
+                "(restart required). Not available while you are in an online lobby or session.", !online_locked())) {
             pcs_set_iso_path("");
         }
     }
 
     section("Memory card");
     if (button_row("Import / export saves...", nullptr,
-            "Opens the Memory Card screen: import a save from Dolphin or a GameCube memory card, or export yours. "
-            "This closes the overlay."))
+            "Opens the Memory Card screen: import a save from Dolphin or a GameCube memory card, or export yours. Not available online. "
+            "This closes the overlay.", !online_locked()))
     {
         pc_memcard_screen_request();
         request_close();
@@ -74,8 +77,8 @@ void tab_game() {
     if (button_row("Check now", nullptr, "Look for a newer version right now.", pc_update_enabled() != 0))
         pc_update_check_now();
     if (button_row("Updates screen...", nullptr,
-            "Opens the Updates screen with release notes, download and install. This closes the overlay.",
-            pc_update_enabled() != 0)) {
+            "Opens the Updates screen with release notes, download and install. This closes the overlay. Not available online.",
+            pc_update_enabled() != 0 && !online_locked())) {
         pc_update_screen_request();
         request_close();
     }

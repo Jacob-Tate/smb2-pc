@@ -447,6 +447,9 @@ void netplay_test_force_active(int on) { s_test_forced = on; }
 int netplay_active(void) { return s_active || s_test_forced; }
 int netplay_input_delay(void) { return s_active ? s_game_cfg.inputDelay : 0; }
 
+/* E7: leave the running session (overlay "Leave session"): closes the connection and goes back to offline play. */
+void netplay_session_leave(void) { if (s_active) session_end(0, "You left the session", 0); }   /* leaving = out of the room */
+
 static void write_exit_file(void)
 {
     FILE *f;
@@ -756,7 +759,7 @@ const char *netplay_lobby_status(void)
 int netplay_lobby_room(NetplayRoomInfo *out)
 {
     int i;
-    if (s_state != NP_LOBBY_IN_ROOM || !s_got_room) return 0;
+    if ((s_state != NP_LOBBY_IN_ROOM && s_state != NP_LOBBY_IN_GAME) || !s_got_room) return 0;
     memset(out, 0, sizeof *out);
     memcpy(out->code, s_room_code, sizeof out->code);
     out->count = s_room_count;
@@ -764,7 +767,8 @@ int netplay_lobby_room(NetplayRoomInfo *out)
     out->host_id = s_room_host;
     out->self_is_host = s_room_host == s_client_id;
     out->self_port = -1;
-    out->delay = s_delay;
+    out->in_game = s_active;
+    out->delay = s_active ? (int)s_game_cfg.inputDelay : s_delay;
     out->suggested_delay = suggested_delay();
     for (i = 0; i < SMB_NET_MAX_PLAYERS; i++) out->owner_id[i] = s_slot_owner[i] == SMB_NET_PORT_NONE ? -1 : s_slot_owner[i];
     for (i = 0; i < s_room_count; i++) {
@@ -787,7 +791,7 @@ int netplay_lobby_room(NetplayRoomInfo *out)
 
 #ifdef _WIN32
 static const char *const k_strip_value[] = { "--server", "--join", "--players", "--delay", "--name", "--room-code-file",
-    "--lobby-timeout", "--lobby-test-script", "--np-resume", "--np-notice", "--np-wait-pid" };
+    "--lobby-timeout", "--lobby-test-script", "--overlay-test-online-script", "--np-resume", "--np-notice", "--np-wait-pid" };
 static const char *const k_strip_flag[] = { "--create", "--np-lobby" };
 /* dropped when going back to offline play (a session's own test/recording flags) */
 static const char *const k_strip_session_value[] = { "--np-exit-file", "--record", "--replay", "--checksum-log",
