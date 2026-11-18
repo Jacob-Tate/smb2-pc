@@ -13,14 +13,16 @@
 #   --renderers "gl d3d12"
 #   --variants "name=args;name2=args"  REPLACES the fps x renderer matrix with explicit cells (extra exe args)
 #   --t2              extra render-independence cells: uncapped, --no-vsync, --msaa 0/8, 1280x720 window
+#   --real-audio      replays use the real audio device (T3) instead of --audio-null
+#   --seed-settings F copy F to <save-dir>/settings.dat before each replay (T4: odd local settings must not matter)
 # Exit 0 = all logs identical; 1 = mismatch (diff printed); 2 = setup error.
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-OUT=; RECDIR=; SCEN="race mg"; RUNS=3; JOBS=4; FPSL="60 144"; RENL="gl d3d12"; VARIANTS=; T2=0; EXE=
+OUT=; RECDIR=; SCEN="race mg"; RUNS=3; JOBS=4; FPSL="60 144"; RENL="gl d3d12"; VARIANTS=; T2=0; EXE=; AUDIO="--audio-null"; SEED=
 while [ $# -gt 0 ]; do
   case $1 in
     --out) OUT=$2; shift 2;; --rec-dir) RECDIR=$2; shift 2;; --scenarios) SCEN=$2; shift 2;;
     --runs) RUNS=$2; shift 2;; --jobs) JOBS=$2; shift 2;; --fps) FPSL=$2; shift 2;;
-    --renderers) RENL=$2; shift 2;; --variants) VARIANTS=$2; shift 2;; --t2) T2=1; shift;;
+    --renderers) RENL=$2; shift 2;; --variants) VARIANTS=$2; shift 2;; --t2) T2=1; shift;; --real-audio) AUDIO=; shift;; --seed-settings) SEED=$2; shift 2;;
     -*) echo "unknown option $1"; exit 2;; *) EXE=$1; shift;;
   esac
 done
@@ -49,8 +51,8 @@ declare -A POLLS=([race]=4500 [mg]=7500) SCRIPT=([race]="$RACE" [mg]="$MG") MODE
 # run_exe <logbase> <dir> <args...>: run in its own cwd with its own throwaway save dir
 run_exe() {
   local base=$1 dir=$2; shift 2
-  mkdir -p "$dir/save"
-  ( cd "$dir" && timeout 1200 "$EXE" --iso "$ISO" --save-dir "$(cygpath -w "$dir/save")" --windowed --audio-null "$@" ) > "$base.log" 2>&1
+  mkdir -p "$dir/save"; [ -n "$RUN_SEED" ] && cp "$RUN_SEED" "$dir/save/settings.dat"
+  ( cd "$dir" && timeout 1200 "$EXE" --iso "$ISO" --save-dir "$(cygpath -w "$dir/save")" --windowed ${RUN_AUDIO---audio-null} "$@" ) > "$base.log" 2>&1
 }
 
 for s in $SCEN; do
@@ -83,7 +85,7 @@ for s in $SCEN; do for c in "${CELLS[@]}"; do for k in $(seq 1 "$RUNS"); do
   name=${c%%|*}; args=${c#*|}; id=$s.$name.$k; d=$OUT/runs/$id; mkdir -p "$d"
   while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n; done
   echo "[replay] $id"
-  ( run_exe "$d/out" "$d" $args --replay "$(cygpath -w "$RECDIR/$s.bin")" --checksum-log "$(cygpath -w "$d/ck.txt")"; echo $? > "$d/rc" ) &
+  ( RUN_AUDIO=$AUDIO RUN_SEED=$SEED run_exe "$d/out" "$d" $args --replay "$(cygpath -w "$RECDIR/$s.bin")" --checksum-log "$(cygpath -w "$d/ck.txt")"; echo $? > "$d/rc" ) &
   N=$((N+1))
 done; done; done
 wait

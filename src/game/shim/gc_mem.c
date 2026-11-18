@@ -73,6 +73,9 @@ int gc_mem_init(void)
         exit(1);
     }
     memset(s_gc_mem, 0, GC_MEM_SIZE);
+    { /* E4/T5 test hook: SMB2_TEST_FILL=<hex byte> pre-fills the arena to expose uninitialised reads */
+      const char *tf = getenv("SMB2_TEST_FILL");
+      if (tf && *tf) memset(s_gc_mem, (int)strtol(tf, NULL, 16), GC_MEM_SIZE); }
 
     /* Populate low-memory OS globals (big-endian on GC, but the game reads
      * them through normal loads, so native endianness is what it sees). */

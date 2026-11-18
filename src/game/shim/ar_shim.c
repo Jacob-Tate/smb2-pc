@@ -21,6 +21,8 @@ static void aram_ensure(void)
 {
     if (!s_aram) {
         s_aram = calloc(1, ARAM_SIZE);
+        { const char *tf = getenv("SMB2_TEST_FILL"); /* E4/T5 test hook */
+          if (s_aram && tf && *tf) memset(s_aram, (int)strtol(tf, NULL, 16), ARAM_SIZE); }
         if (!s_aram) {
             fprintf(stderr, "FATAL: cannot allocate ARAM block\n");
             exit(1);
