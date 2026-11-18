@@ -49,7 +49,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | DONE (c2733e4) |
 | D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | REVIEW (merged a214292; user checks gamepad nav + cursor hide) |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | REVIEW (merged cdabe8f; user checks look + pad nav) |
-| D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
+| D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | IN PROGRESS (task/D5, 2026-11-17) |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
 | E2 | Deterministic session mode (`--det-session`) | E1 | game shim | DONE (f688666) |
 | E3 | Input record/replay + state checksum | E2 | input+shim | DONE (3e0e393) |
