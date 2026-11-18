@@ -9,6 +9,7 @@
 #include <math.h>
 #include "perf.h"
 #include "pc_settings.h"
+#include "overlay.h"
 
 /* SDL3 returns an SDL_FunctionPointer; hand out void* like SDL2 did. */
 static void* gl_getproc(const char* name) { return (void*)(uintptr_t)SDL_GL_GetProcAddress(name); }
@@ -1046,8 +1047,26 @@ static void glb_resize(int width, int height) {
     g_backend->height = height;
 }
 
+/* Dear ImGui overlay (D1), drawn over the finished game frame, before the
+ * frame dump / swap.  The ImGui GL backend saves and restores the bindings,
+ * program, blend, depth, cull, scissor and viewport state itself (so the
+ * mirror above stays exact); this also keeps the few settings it leaves
+ * changed (pixel store) so the next game frame sees exactly what it set. */
+static int s_overlay_drawn;   /* drawn for the frame that read_frame is dumping */
+static void glb_draw_overlay(void) {
+    GLint unpack_rl = 0, unpack_al = 4;
+    if (!overlay_is_open()) { overlay_render(); return; }  /* closed: schedule hook only */
+    glGetIntegerv(GL_UNPACK_ROW_LENGTH, &unpack_rl);
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpack_al);
+    overlay_render();
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, unpack_rl);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, unpack_al);
+}
+
 static void glb_present(void) {
     SDL_Window* w = SDL_GL_GetCurrentWindow();
+    if (!s_overlay_drawn) glb_draw_overlay();
+    s_overlay_drawn = 0;
     if (w) SDL_GL_SwapWindow(w);
 }
 
@@ -1456,6 +1475,7 @@ static int glb_read_frame(unsigned char** rgb, int* pw, int* ph) {
     if (!win) return 0;
     SDL_GetWindowSizeInPixels(win, &w, &h);
     if (w <= 0 || h <= 0) return 0;
+    if (!s_overlay_drawn) { glb_draw_overlay(); s_overlay_drawn = 1; }   /* dumps show the overlay */
     row = (size_t)w * 3;
     if (!buf || buf_size < row * h) {   /* window can be resized */
         free(buf); free(flip);

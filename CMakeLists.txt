@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
-project(smb2_pc_port LANGUAGES C)
+project(smb2_pc_port LANGUAGES C CXX)
 
 # Set C standard
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Build type
 if(NOT CMAKE_BUILD_TYPE)
@@ -183,6 +185,26 @@ endif()
 
 # Create executable
 add_executable(smb2_pc_port ${SOURCES})
+
+# In-game overlay: Dear ImGui (MIT, third_party/imgui: core + SDL3, OpenGL3 and
+# DX12 backends; the DX12 one is compiled in by D2) behind the C API in
+# include/overlay.h.  Static; the toolchains link libstdc++/libc++ and
+# libgcc statically, so no C++ runtime DLL appears next to the exe.
+add_library(smb2_overlay STATIC
+    src/overlay/overlay.cpp
+    third_party/imgui/imgui.cpp
+    third_party/imgui/imgui_draw.cpp
+    third_party/imgui/imgui_tables.cpp
+    third_party/imgui/imgui_widgets.cpp
+    third_party/imgui/imgui_demo.cpp
+    third_party/imgui/backends/imgui_impl_sdl3.cpp
+    third_party/imgui/backends/imgui_impl_opengl3.cpp)
+target_include_directories(smb2_overlay PRIVATE ${CMAKE_SOURCE_DIR}/third_party/imgui)
+target_compile_definitions(smb2_overlay PRIVATE SDL_MAIN_HANDLED)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(smb2_overlay PRIVATE -fno-exceptions -fno-rtti -O2 -ffp-contract=off)
+endif()
+target_link_libraries(smb2_pc_port smb2_overlay)
 
 # Zstandard decompressor (BSD, third_party/zstd) for RVZ discs; static, no DLL.
 add_library(smb2_zstd STATIC ${CMAKE_SOURCE_DIR}/third_party/zstd/zstddeclib.c)

@@ -28,6 +28,7 @@ roughly 40-60 frames per second here.
 | `--dump-interval N` | write `frame_NNNNN.ppm` when frame is 120 or a multiple of N |
 | `--dump-from N` | dump every frame from N on |
 | `--dump-ranges "a-b,c-d"` | dump every frame in the ranges (max 32) |
+| `--overlay-open` / `--overlay-open-frames a-b` | open the ImGui overlay at start / for swapped frames a..b-1 (GL only; frame dumps include it; F2 toggles by hand) |
 | `--trace-frame N` | GL call trace of frame N on stderr |
 | `--renderer gl\|d3d12`, `--width/--height`, `--msaa`, `--fps`, `--no-vsync`, `--language`, `--button-style`, `--perf`, `--audio-wav f` | as in `--help` |
 

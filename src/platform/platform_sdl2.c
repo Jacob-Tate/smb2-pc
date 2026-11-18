@@ -5,6 +5,7 @@
 #include "pc_settings.h"
 #include "input.h"
 #include "render.h"
+#include "overlay.h"
 #include "../render/gx_gpu.h"
 #include "gamedata.h"
 #include "disc_icon.h"
@@ -162,6 +163,9 @@ static void sdl2_poll_events(PlatformContext* ctx) {
 
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        /* ImGui overlay (F2 toggles; D3 adds input routing: for now the game
+         * still sees every event) */
+        (void)overlay_process_event(&event);
         switch (event.type) {
             case SDL_EVENT_QUIT:
                 data->should_close = true;

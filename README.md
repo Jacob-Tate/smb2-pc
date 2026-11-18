@@ -301,6 +301,8 @@ The PC port and the decompilation it builds on are both released under the
 - [Zstandard](https://github.com/facebook/zstd) 1.5.7 by Meta Platforms, Inc.
   (BSD license; decompressor only, used to read RVZ disc images),
   `third_party/zstd/`.
+- [Dear ImGui](https://github.com/ocornut/imgui) 1.91.9b by Omar Cornut (MIT license;
+  core + SDL3, OpenGL3 and DX12 backends), `third_party/imgui/`.
 - fdlibm 5.3, Copyright (C) 1993 Sun Microsystems, Inc. (permissive notice in
   each file), `src/detmath/fdlibm/`.
 - Controller button prompt icons: "Free Input Pack" by Julio Cacko
