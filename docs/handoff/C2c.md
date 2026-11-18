@@ -1,4 +1,4 @@
-# C2c + C2d handoff: port migrated from SDL2 to SDL3 3.4.10 (static) -- IN PROGRESS
+# C2c + C2d handoff: port migrated from SDL2 to SDL3 3.4.10 (static) -- DONE (REVIEW items for the user below)
 
 Branch task/C2c (worktree wt/C2c). Update this file after every step.
 
@@ -7,8 +7,6 @@ Branch task/C2c (worktree wt/C2c). Update this file after every step.
       tools/build_sdl3_mingw.sh was not run; dropped SDL2main + `main=SDL_main` define (SDL_MAIN_HANDLED stays).
 - [x] platform_sdl2.c, pc_settings.c, pc_file_dialog.c, render_opengl.c, render_d3d12.c, audio_miniaudio.c,
       assets.c, main.c, button_prompts.c/.h, input.h, input_sdl2.c: ported, x64 builds.
-- [ ] i686 build, smoke tests, renderer/mode matrix, audio, list-controllers, README/LICENSE (see below)
-- [ ] --list-controllers
 
 ## Conventions / gotchas
 - Source files in the worktree are CRLF (autocrlf=true, index is LF). I converted the edited files to LF
@@ -45,3 +43,31 @@ Branch task/C2c (worktree wt/C2c). Update this file after every step.
 SDL3 buttons are positional (SOUTH = bottom). sdl_button_to_pad() (input_sdl2.c) maps SOUTH/EAST/WEST/NORTH via
 SDL_GetGamepadButtonLabel: label A or Cross -> GC A; B or Circle -> GC B; X or Square -> GC X; Y or Triangle -> GC Y.
 Xbox south=A, PS south=Cross, Switch east=A (so Switch labelled-A button = GC A, as before). Unlabelled: by position.
+
+## Done (all steps)
+- Both arches build; `objdump -p` shows no SDL DLL import (only system DLLs + opengl32/comdlg32/winhttp).
+- tools/smoke boot_to_menu.sh and party_race_2p.sh PASS on build64 and build32 (use absolute exe path).
+- GL and D3D12 x windowed/--fullscreen (borderless) --exit-frame 600 exit 0; settings.dat display=fullscreen
+  (exclusive, 1280x720 -> drawable 1280x720), borderless, windowed all apply (run without --exit-frame, since
+  automated runs force windowed, and kill with `timeout 14`).
+- Audio device (WASAPI) starts; --audio-wav non-silent.
+- `--list-controllers` added (input_print_controllers in input_sdl2.c; main.c; help text): SDL version, hints,
+  every joystick (instance id, name, VID/PID/version, GUID, path, joystick type, gamepad yes/no + type + mapping),
+  1 s wait for late devices, verdict, exit 0, no window.
+- README "Building from source" -> SDL3 (tools/build_sdl3_mingw.sh), credits and installer/LICENSE.txt (SDL3 3.4.10, 1997-2026).
+
+## Behaviour changes forced by SDL3
+- settings.dat / save paths / format unchanged (SDL_GetPrefPath same dir; only the old comparison exe was stale: it
+  wrote display=borderless as default, pre-A1).
+- controllers.ini is keyed by SDL GUID; SDL3 GUIDs can differ from SDL2's, so stick settings saved under an SDL2
+  GUID may not be found again (re-adjust once).
+- Luna/Stadia/Shield pads no longer have their own type: they use GameCube prompt glyphs (were Xbox style).
+- SDL_INIT_TIMER and SDL_INIT_AUDIO are no longer passed (unused).
+- Default window scale on high-DPI uses SDL_GetDisplayContentScale (same 150% -> 1920x1080 intent).
+- Refresh rate of a fractional display (59.94) is rounded to the nearest int (SDL2 gave an int mode directly).
+- No SDL_main / SDL2main: plain main() with SDL_MAIN_HANDLED.
+
+## Not tested (needs a human)
+Alt+Enter, F1 overlay, window drag/resize, file dialogs, first-run disc picker, hot-plug of real pads, Steam Controller
+with Steam closed, real keyboard typing (keyboard code unchanged except the key-state array being `const bool*`;
+synthetic key injection was blocked in the agent environment).
