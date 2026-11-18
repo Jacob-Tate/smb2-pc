@@ -3,6 +3,7 @@
 #include "input.h"
 #include "audio.h"
 #include "render.h"
+#include "overlay.h"
 #include "assets.h"
 #include "pc_settings.h"
 #include "gamedata.h"
@@ -198,6 +199,11 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "--dump-ranges") == 0 && i + 1 < argc) {
             extern void platform_set_dump_ranges(const char* spec);
             platform_set_dump_ranges(argv[++i]);
+        } else if (strcmp(argv[i], "--overlay-open") == 0) {
+            overlay_test_open_at_start();
+        } else if (strcmp(argv[i], "--overlay-open-frames") == 0 && i + 1 < argc) {
+            long a = 0, b = 0;
+            if (sscanf(argv[++i], "%ld-%ld", &a, &b) == 2 && b > a) overlay_test_open_frames(a, b);
         } else if (strcmp(argv[i], "--renderer") == 0 && i + 1 < argc) {
             g_renderer_arg = argv[++i];
         } else if (strcmp(argv[i], "--language") == 0 && i + 1 < argc) {
@@ -247,6 +253,8 @@ int main(int argc, char* argv[]) {
             printf("  --fps <n>         Rendered frames per second: 60 (default, no\n"
                    "                    interpolation), 120, 144, 240, ..., uncapped or\n"
                    "                    display (refresh rate); the game still runs at 60\n");
+            printf("  --overlay-open    Open the (test) overlay at start; --overlay-open-frames a-b\n"
+                   "                    opens it for swapped frames a..b-1. F2 toggles it.\n");
             printf("  --renderer <r>    Renderer: gl or d3d12 (default: settings.dat, else gl)\n");
             printf("  --language <l>    Game language: auto, en, de, fr, es, it or ja\n"
                    "                    (this run only; default: settings.dat, else auto)\n");
@@ -429,6 +437,8 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         pcs_set_active_renderer(use_d3d12 ? PCS_RENDERER_D3D12 : PCS_RENDERER_GL);
+        overlay_init((SDL_Window*)platform_sdl_window(),
+                     use_d3d12 ? OVERLAY_RENDERER_D3D12 : OVERLAY_RENDERER_GL);
     }
     printf("DEBUG: Renderer initialized\n");
     fflush(stdout);
@@ -489,6 +499,7 @@ int main(int argc, char* argv[]) {
     assets_shutdown();
     input_shutdown();
     audio_shutdown();
+    overlay_shutdown();
     render_shutdown();
     platform_shutdown();
     return 0;
@@ -553,6 +564,7 @@ int main(int argc, char* argv[]) {
     assets_shutdown();
     input_shutdown();
     audio_shutdown();
+    overlay_shutdown();
     render_shutdown();
     platform_shutdown();
 
