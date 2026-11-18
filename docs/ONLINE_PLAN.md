@@ -36,23 +36,23 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | A1 | Default to windowed instead of fullscreen | P0.3 | settings | REVIEW (merged 81bb9a9; user visual check pending) |
 | B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | DONE (0be1727) |
 | B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | DONE (7e17185) |
-| B3 | RVZ in dialogs, installer, help text, gamedata.c | B2, **C2c** (both edit platform_sdl2.c) | disc+installer | TODO (after C2c) |
+| B3 | RVZ in dialogs, installer, help text, gamedata.c | B2, **C2c** (both edit platform_sdl2.c) | disc+installer | IN PROGRESS (task/B3F2 together with F2, 2026-11-17) |
 | B4 | RVZ verification vs. the user's ISO | B2 | disc | DONE (SHA-256 identical, in B2) |
 | B5 | (Optional) RVZ hardening: check header SHA-1s / zstd frame checksums | B2 | disc | TODO (low priority) |
 | C1 | Steam Controller diagnosis (research) | – | input | DONE (docs/handoff/C1.md) |
 | C2a | `--list-controllers` diagnostic flag | – | input | SKIPPED (SDL2 can't support the controller anyway; the flag moves into C2d, on SDL3) |
 | C2b | SDL3 3.4.x static build for i686 + x86_64 MinGW (`tools/build_sdl3_mingw.sh`) | P0.2 | env | DONE (49c8af2) |
-| C2c | Port platform/video/render/audio/assets glue to SDL3 **together with C2d** (one exe can't link SDL2 and SDL3) | C2b, P0.4 | platform+input | IN PROGRESS (task/C2c covers C2c+C2d, 2026-11-17) |
-| C2d | Port input to SDL3 gamepad API; Steam Controller works | (inside C2c) | input | IN PROGRESS (in task/C2c) |
-| C2e | README/docs for SDL3; pin version | C2d | docs | TODO |
-| D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | TODO |
+| C2c | Port platform/video/render/audio/assets glue to SDL3 **together with C2d** (one exe can't link SDL2 and SDL3) | C2b, P0.4 | platform+input | REVIEW (merged c01ae12; user checks controller, keyboard, dialogs) |
+| C2d | Port input to SDL3 gamepad API; Steam Controller works | (inside C2c) | input | REVIEW (merged c01ae12, inside C2c) |
+| C2e | README/docs for SDL3; pin version | C2d | docs | DONE (README build steps + credits done in C2c) |
+| D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | IN PROGRESS (task/D1, 2026-11-17) |
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | TODO |
 | D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | TODO |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
-| E2 | Deterministic session mode (`--det-session`) | E1 | game shim | IN PROGRESS (task/E2, 2026-11-17) |
-| E3 | Input record/replay + state checksum | E2 | input+shim | TODO |
+| E2 | Deterministic session mode (`--det-session`) | E1 | game shim | DONE (f688666) |
+| E3 | Input record/replay + state checksum | E2 | input+shim | IN PROGRESS (task/E3, 2026-11-17) |
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | TODO |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | TODO |
@@ -61,8 +61,8 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E9 | Disconnect → CPU/neutral pad, desync handling | E6 | netplay | TODO |
 | E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
-| F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | IN PROGRESS (task/F1, 2026-11-17) |
-| F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | TODO (after C2c) |
+| F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | REVIEW (merged 2f493e9; user checks Shift-start dialog) |
+| F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | IN PROGRESS (task/B3F2 with B3, 2026-11-17) |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
@@ -731,3 +731,25 @@ Candidate fixes (choose from C1's results; likely several):
 - **Server deployed by the user at 10.0.0.5:7855** (Portainer stack `smb2`). Orchestrator ran
   `build/server/smb2-server-test 10.0.0.5 7855` from WSL: 77 checks, ALL PASSED. Use `10.0.0.5:7855` as the
   default/test server address in E6/E7.
+- E2 merged (f688666): `--det-session` (+ `--session-epoch`, `--session-locale`), `src/netplay/session.{c,h}`,
+  `src/game/shim/pc_session_shim.c` (`[detlog]` fingerprint every 60 polls). Verified by the orchestrator: same
+  input script at 60 fps/GL and 144 fps/D3D12 → identical detlogs. Limitations (docs/handoff/E2.md): the pause
+  menu's "Quit to Desktop" row can't be removed port-side (decomp sets it) → E9 treats choosing it as a
+  disconnect; pad `err` still follows local controllers (E3); watchdog bump in the lockstep wait is E6.
+- **C2c+C2d merged (c01ae12): the port is on SDL3 3.4.10 (static).** Conflicts with E2 in CMakeLists/main.c
+  resolved (keep both). Merged build: both arches build; boot_to_menu (x64) and party_race_2p (i686) PASS;
+  det-session detlog still identical across fps/renderer AND identical to the pre-SDL3 detlog (rand f4c20337 at
+  poll 1740), so SDL3 didn't change the simulation. New `--list-controllers`. Behaviour changes forced by SDL3
+  (docs/handoff/C2c.md): controllers.ini GUIDs may differ from SDL2's (stick settings re-adjust once); Luna/
+  Stadia/Shield pads show GC prompts; 59.94 Hz rounds to 60.
+  **User REVIEW**: Steam Controller in game with Steam closed (`--list-controllers` should list VID 0x28DE),
+  keyboard-only menus, hot-plug, Switch Pro face buttons, Alt+Enter, F1 overlay, file dialogs (incl. from
+  exclusive fullscreen), window drag/resize, first-run disc picker, high-DPI default window size.
+- **F1 merged (2f493e9)**: `platforms/windows/launcher/` + `tools/package_friends.sh` → `build/package/friends/SMB2.exe`
+  (7.9 MB, zstd-compressed, not LZMS) + README.txt. Unpacks to `%LOCALAPPDATA%\SMB2\builds\<id>`, saves in
+  `%APPDATA%\SMB2\friend\`. Game change: in portable mode `--save-dir` now also moves `memcard\` and `logs\`.
+  Orchestrator re-packaged from merged online (SDL3) and ran it with redirected AppData: unpack + RVZ boot OK.
+  Test env: `SMB2_LAUNCHER_ASSUME_YES=1`; launcher honours LOCALAPPDATA/APPDATA env vars.
+  **User REVIEW**: hold Shift while starting SMB2.exe → confirmation dialog lists the two folders; No cancels.
+- Smoke scripts now accept relative exe paths (tools/smoke/common.sh).
+- Next wave (parallel): B3+F2 (one agent; both small, both edit platform_sdl2.c), D1 (ImGui, SDL3+GL), E3.

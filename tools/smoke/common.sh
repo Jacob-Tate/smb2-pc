@@ -5,6 +5,8 @@
 #   SMOKE_KEEP=1  keep the output dir on PASS too
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 EXE=${1:-$REPO/build64/bin/smb2_pc_port.exe}
+# the scripts cd into $OUT before running: make a relative exe path absolute
+case "$EXE" in /*|[A-Za-z]:*) ;; *) EXE=$(pwd)/$EXE ;; esac
 ISO=${SMB2_ISO:-C:/Users/jacob/source/super_monkey/Super Monkey Ball 2 (USA).iso}
 [ -f "$EXE" ] || { echo "FAIL: exe not found: $EXE"; exit 2; }
 [ -f "$ISO" ] || { echo "FAIL: ISO not found: $ISO (set SMB2_ISO)"; exit 2; }
