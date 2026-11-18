@@ -35,7 +35,7 @@ typedef struct SessionConfig {
 extern "C" {
 #endif
 
-/* Defaults used by --det-session: build id "det-session", disc 0, locale 0,
+/* Defaults used by --det-session: build id = smb2_build_id(), disc 0, locale 0,
  * a fixed epoch, no flags. */
 void pc_session_default_config(SessionConfig *cfg);
 

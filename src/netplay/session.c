@@ -3,6 +3,7 @@
  * src/game/shim/pc_session_shim.c, where the decomp's globals are visible. */
 #include "netplay/session.h"
 #include <string.h>
+#include "build_id.h"
 #include <stdio.h>
 
 #define GC_TICK_HZ 40500000ull          /* bus clock / 4 */
@@ -19,7 +20,8 @@ static uint64_t s_base_secs;            /* clock start, seconds since 2000-01-01
 void pc_session_default_config(SessionConfig *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
-    strcpy(cfg->build_id, "det-session");
+    /* the real build id (<=24 chars, fits PC_SESSION_BUILD_ID_MAX and the protocol's SMB_NET_MAX_BUILD_ID) */
+    snprintf(cfg->build_id, sizeof cfg->build_id, "%s", smb2_build_id());
     cfg->disc_hash = 0;
     cfg->locale = 0;
     cfg->epoch = 0x534D423244455453ull;   /* "SMB2DETS" */

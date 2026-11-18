@@ -31,6 +31,7 @@ struct TextBox;
 #include "pc_update.h"
 #include "pc_memcard_ui.h"
 #include "netplay/session.h"
+#include "build_id.h"
 
 /* ---- game symbols not (correctly) declared in the headers ---- */
 struct ScreenOption {
@@ -516,8 +517,8 @@ static void overlay_draw(int cursor, int editing, int timer)
             "うえ/した:えらぶ   A:へんこう   B / F1:とじる" };
         v.title = pc_text_pick(title);
         {
-            static char ver[48];
-            snprintf(ver, sizeof ver, "v%s", pc_update_current_version());
+            static char ver[96];
+            snprintf(ver, sizeof ver, "v%s  build %s", pc_update_current_version(), smb2_build_id());
             v.version = ver;
         }
         v.hint = pc_text_pick(pc_quit_confirm_active() ? hint_confirm

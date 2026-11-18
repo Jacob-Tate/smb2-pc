@@ -68,6 +68,7 @@ static bool sdl2_create_window(SDL2BackendData* data, const PlatformConfig* conf
     }
 
     printf("DEBUG: SDL_CreateWindow done (%s)\n", opengl ? "OpenGL" : "D3D12");
+    printf("[window] title: %s\n", SDL_GetWindowTitle(data->window));
     fflush(stdout);
 
     if (!data->window) {
