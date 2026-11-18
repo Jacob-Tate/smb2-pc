@@ -859,3 +859,5 @@ Candidate fixes (choose from C1's results; likely several):
   **USER: redeploy the server** (push `online` → CI publishes ghcr.io/jacob-tate/smb2-server → update the Portainer stack);
   until then in-game start against 10.0.0.5 shows "server too old". Locale: everyone announces 0; host-chosen locale needs
   a server JOIN-check change. Relaunch is Windows-only.
+- Orchestrator: full suite on merged online (D4+E8+X2, 94bd488 build): boot_to_menu, party_race_2p, overlay_settings,
+  record_replay, lobby_instances (local server), two_instances (10.0.0.5, old server) all PASS. E9 started (task/E9).
