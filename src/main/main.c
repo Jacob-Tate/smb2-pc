@@ -6,6 +6,8 @@
 #include "assets.h"
 #include "pc_settings.h"
 #include "gamedata.h"
+#include "../assets/disc_reader.h"
+#include <time.h>
 #include "install_mode.h"
 #include "pc_update.h"
 #include "pc_card.h"
@@ -100,6 +102,38 @@ int main(int argc, char* argv[]) {
     extern void shim_start_watchdog(void);
     shim_install_crash_handler();
 #endif
+    /* Hidden verification tool: --rvz-dump <in.rvz|iso> <out.iso> decodes a whole disc image. */
+    for (int i = 1; i + 2 < argc; i++) {
+        if (strcmp(argv[i], "--rvz-dump") == 0) {
+            char why[256] = "";
+            DiscReader* dr = disc_reader_open(argv[i + 1], why, sizeof why);
+            FILE* out;
+            static unsigned char dbuf[1 << 20];
+            int64_t total, pos = 0;
+            clock_t t0 = clock();
+            if (!dr) { printf("rvz-dump: %s\n", why); return 1; }
+            out = fopen(argv[i + 2], "wb");
+            if (!out) { printf("rvz-dump: cannot create %s\n", argv[i + 2]); disc_reader_close(dr); return 1; }
+            total = disc_reader_size(dr);
+            while (pos < total) {
+                uint32_t n = (total - pos) > (int64_t)sizeof dbuf ? (uint32_t)sizeof dbuf : (uint32_t)(total - pos);
+                if (!disc_reader_read(dr, (uint64_t)pos, n, dbuf) || fwrite(dbuf, 1, n, out) != n) {
+                    printf("rvz-dump: failed at offset %lld\n", (long long)pos);
+                    fclose(out); disc_reader_close(dr);
+                    return 1;
+                }
+                pos += n;
+            }
+            fclose(out);
+            {
+                double secs = (double)(clock() - t0) / CLOCKS_PER_SEC;
+                printf("rvz-dump: format=%s %lld bytes in %.2f s (%.1f MB/s)\n", disc_reader_format(dr),
+                       (long long)total, secs, secs > 0 ? total / 1048576.0 / secs : 0.0);
+            }
+            disc_reader_close(dr);
+            return 0;
+        }
+    }
     /* Headless installer modes: no window, audio or game, only the
      * PROGRESS/RESULT protocol on stdout (docs/installer.md). */
     for (int i = 1; i < argc; i++) {

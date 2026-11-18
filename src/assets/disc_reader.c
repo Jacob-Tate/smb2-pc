@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include "rvz.h"
 
 struct DiscReader {
     const char* format;
@@ -11,6 +12,7 @@ struct DiscReader {
     bool (*read)(DiscReader*, uint64_t, uint32_t, void*);
     void (*close)(DiscReader*);
     FILE* file;                 /* plain backend */
+    RvzImage* rvz;              /* RVZ backend */
 };
 
 static void set_err(char* err, size_t errsz, const char* fmt, const char* a, const char* b)
@@ -45,6 +47,16 @@ static bool plain_read(DiscReader* r, uint64_t off, uint32_t len, void* dst)
     return fread(dst, 1, len, r->file) == len;
 }
 
+static bool rvz_backend_read(DiscReader* r, uint64_t off, uint32_t len, void* dst)
+{
+    return rvz_read(r->rvz, off, len, dst);
+}
+
+static void rvz_backend_close(DiscReader* r)
+{
+    rvz_close(r->rvz);
+}
+
 static void plain_close(DiscReader* r)
 {
     if (r->file) fclose(r->file);
@@ -61,10 +73,22 @@ DiscReader* disc_reader_open(const char* path, char* err, size_t errsz)
     if (!f) { set_err(err, errsz, "cannot open %s: %s", path, strerror(errno)); return NULL; }
     if (fread(magic, 1, 4, f) != 4) memset(magic, 0, 4);
 
-    if (!memcmp(magic, "RVZ\x01", 4)) {
-        fclose(f);
-        set_err(err, errsz, "%s is an RVZ image; RVZ is not supported yet (convert it to ISO)%s", path, "");
-        return NULL;
+    if (!memcmp(magic, "RVZ", 4)) {
+        char why[256] = "";
+        RvzImage* z = rvz_open(f, why, sizeof why);
+        if (!z) {
+            fclose(f);
+            set_err(err, errsz, "cannot read RVZ image %s: %s", path, why);
+            return NULL;
+        }
+        r = calloc(1, sizeof *r);
+        if (!r) { rvz_close(z); set_err(err, errsz, "%s%s", "out of memory", ""); return NULL; }
+        r->format = "rvz";
+        r->rvz = z;
+        r->size = rvz_size(z);
+        r->read = rvz_backend_read;
+        r->close = rvz_backend_close;
+        return r;
     }
 
     r = calloc(1, sizeof *r);
