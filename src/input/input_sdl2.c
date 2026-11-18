@@ -23,6 +23,7 @@
 #include "gc_stick.h"
 #include "pad_config.h"
 #include "netplay/inputsync.h"
+#include "overlay.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1002,6 +1003,38 @@ void process_inputs(void)
      * local state, hand the 4 pads to inputsync and use what comes back for
      * all 4 ports (value + err). */
     if (game) {
+        /* D3 overlay gate: while the ImGui overlay is open (and until the buttons
+         * that were down at close are released) every local pad reads neutral, so
+         * record / netplay / the game never see the overlay's navigation input.
+         * Replay is unaffected (its pads come from the file in the exchange). */
+        {
+            static int blk_latch, blk_logged;
+            int raw_any = 0, blocked = overlay_input_blocked();
+            uint16_t dropped = 0;
+            for (int i = 0; i < MAX_CONTROLLERS; i++) {
+                raw_any |= pad_status_groups[i].status[0].button != 0;
+                dropped |= pad_status_groups[i].status[0].button;
+            }
+            if (blocked) blk_latch = 1;
+            else if (blk_latch && !raw_any) blk_latch = 0;
+            if (blocked || blk_latch) {
+                for (int i = 0; i < MAX_CONTROLLERS; i++) {
+                    PADStatus* st = &pad_status_groups[i].status[0];
+                    st->button = 0;
+                    st->stickX = st->stickY = st->substickX = st->substickY = 0;
+                    st->triggerLeft = st->triggerRight = 0;
+                    st->analogA = st->analogB = 0;
+                }
+                s_esc_pressed = 0;
+                if (dropped && !blk_logged) {
+                    printf("[overlay] local pad input gated (buttons 0x%04x dropped) at poll %llu\n",
+                           dropped, (unsigned long long)inputsync_poll_count());
+                    blk_logged = 1;
+                }
+            } else {
+                blk_logged = 0;
+            }
+        }
         SmbNetPad loc[INPUTSYNC_PORTS], out[INPUTSYNC_PORTS];
         for (int i = 0; i < MAX_CONTROLLERS; i++) {
             const PADStatus* st = &pad_status_groups[i].status[0];

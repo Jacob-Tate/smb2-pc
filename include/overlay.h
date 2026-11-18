@@ -29,6 +29,15 @@ void overlay_shutdown(void);
  * caller does not block game input yet. */
 bool overlay_process_event(const SDL_Event* e);
 
+/* D3: call once per platform_poll_events, after the event loop.  Controller
+ * chord (Back + Start held 0.5 s toggles; the Guide button toggles from
+ * overlay_process_event) and mouse cursor (shown while open, hidden after
+ * 3 s without mouse activity otherwise). */
+void overlay_poll_tick(void);
+/* D3: true while local pads must read neutral (the overlay is open).  The
+ * input code also holds neutral after closing until the buttons are released. */
+bool overlay_input_blocked(void);
+
 /* Start the ImGui frame and build the UI (no-op when closed).  Called by
  * overlay_render if the renderer did not call it earlier in the frame. */
 void overlay_new_frame(void);

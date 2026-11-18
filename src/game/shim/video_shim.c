@@ -349,6 +349,13 @@ void video_finish_frame(void)
             pc_quit_request("window closed");
         pc_quit_poll();
     }
+    /* D3: ImGui overlay open and no online session: pause here (online it never pauses) */
+    {
+        extern int pc_overlay_pause_run(void);
+        extern int g_gx_presents_frames;
+        if (g_gx_presents_frames && pc_overlay_pause_run())
+            s_hfr_skip = 1;   /* presented its own frames */
+    }
     if (pc_session_active()) {
         /* E1 D12: no modal local screens in a session (F1 overlay, Controller
          * Sticks, updater, Memory Card screen): they poll pads themselves and

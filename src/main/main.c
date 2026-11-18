@@ -15,6 +15,7 @@
 #include "pc_card.h"
 #include "netplay/session.h"
 #include "netplay/inputsync.h"
+#include "netplay/netplay_active.h"
 #include "netplay/checksum.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -215,6 +216,8 @@ int main(int argc, char* argv[]) {
             platform_set_dump_ranges(argv[++i]);
         } else if (strcmp(argv[i], "--overlay-open") == 0) {
             overlay_test_open_at_start();
+        } else if (strcmp(argv[i], "--overlay-test-online") == 0) {
+            netplay_test_force_active(1);   /* test: overlay behaves as online (no pause) */
         } else if (strcmp(argv[i], "--overlay-open-frames") == 0 && i + 1 < argc) {
             long a = 0, b = 0;
             if (sscanf(argv[++i], "%ld-%ld", &a, &b) == 2 && b > a) overlay_test_open_frames(a, b);
