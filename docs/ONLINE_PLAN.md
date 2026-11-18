@@ -56,9 +56,9 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | DONE (e6696cc; T8 → E9, T9 human) |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | DONE (merge + fixup d42e44d) |
-| E7 | Online lobby UI in the overlay | D4, E6 | overlay+netplay | TODO |
-| E8 | Session start flow + sim-affecting settings sync | E6 | netplay | IN PROGRESS (task/E8, 2026-11-17) |
-| E9 | Disconnect → CPU/neutral pad, desync handling | E6 | netplay | TODO |
+| E7 | Online lobby UI in the overlay | D4, E6, E8 | overlay+netplay | TODO |
+| E8 | Session start flow + sim-affecting settings sync | E6 | netplay | DONE (aa213ab; needs server redeploy for in-game start) |
+| E9 | Disconnect → CPU/neutral pad, desync handling | E6, E8 | netplay | TODO |
 | E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
 | F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | REVIEW (merged 2f493e9; user checks Shift-start dialog) |
@@ -844,3 +844,18 @@ Candidate fixes (choose from C1's results; likely several):
   GL persistent-mapped vertex ring (CPU-write/GPU-read race or stale rect data) → new low-priority task X3. Not attract-only
   (race gameplay frames differ too); D3D12 shows it too (own ring, not inspected). Sim hash/netplay unaffected. For pixel-diff
   tests use `SMB2_NO_PERSISTENT_VBO=1` (slow) until X3. Instrumentation patch kept in `super_monkey/wt/X2_tmp` (not in git).
+- **E8 merged (aa213ab)**: non-blocking lobby API in `src/netplay/netplay.{c,h}` (`netplay_lobby_*`, `NetplayRoomInfo`,
+  `netplay_lobby_next_event`, `netplay_lobby_status`, auto delay from pings), pumped by `netplay_lobby_tick()` in video_shim.c
+  and the overlay pause loop. **Design: relaunch, not in-process reset** (audio synth, rand, card, quit flags, decomp statics,
+  heap layout need a fresh process): on GAME_START each client sends RELAUNCHING(token), spawns itself with
+  `--np-resume CODE,ID,TOKEN --np-wait-pid`, quits; the new process RESUMEs its seat and runs lockstep from poll 0.
+  Session end from the in-game lobby relaunches into offline mode with an `--np-notice` toast (untested); CLI/test runs
+  exit 0/3/4. Server: new `SMB_MSG_RELAUNCHING=11`, `SMB_MSG_RESUME=12`, `SMB_CAP_RESUME` (WELCOME capability byte), 90 s seat
+  hold; protocol version NOT bumped (old/new interoperate on the CLI path). HELLO now carries the real FST CRC
+  (`iso_fst_crc32()`, 76b4d36b for the USA disc). Test flags `--lobby-test-script`, `--np-*`; script
+  `tools/netplay/lobby_instances.sh`. Orchestrator (E8 worktree build): lobby_instances menu PASS (local server);
+  two_instances vs the deployed OLD server PASS (CLI path still compatible). Agent: lobby race 4500 polls PASS,
+  server_test.sh 90 checks PASS.
+  **USER: redeploy the server** (push `online` → CI publishes ghcr.io/jacob-tate/smb2-server → update the Portainer stack);
+  until then in-game start against 10.0.0.5 shows "server too old". Locale: everyone announces 0; host-chosen locale needs
+  a server JOIN-check change. Relaunch is Windows-only.
