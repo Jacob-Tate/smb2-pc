@@ -347,6 +347,16 @@ static void migrate_old_names(const char* ud_raw)
 #endif
 }
 
+/* Portable mode with --save-dir: memcard\ and logs\ follow --save-dir too (the friend
+ * build launcher relies on it; before, only settings.dat did). */
+static void port_save_base(const char* save_dir_arg)
+{
+    if (save_dir_arg && save_dir_arg[0]) {
+        snprintf(s_base, sizeof s_base, "%s", save_dir_arg);
+        add_sep(s_base, sizeof s_base);
+    }
+}
+
 void pc_install_init(const char* save_dir_arg)
 {
     char path[1100], line[1200];
@@ -358,7 +368,10 @@ void pc_install_init(const char* save_dir_arg)
     s_inited = 1;
     snprintf(path, sizeof path, "%sinstall.ini", pc_exe_dir());
     f = pc_exe_dir()[0] ? fopen(path, "rb") : NULL;
-    if (!f) return;                        /* portable: nothing changes */
+    if (!f) {                              /* portable: nothing changes ... */
+        port_save_base(save_dir_arg);
+        return;
+    }
     while (fgets(line, sizeof line, f)) {
         char *k = line, *v, *eq;
         lineno++;
@@ -387,6 +400,7 @@ void pc_install_init(const char* save_dir_arg)
     fclose(f);
     if (strcmp(mode, "installed") != 0) {
         printf("[install] %s has mode=%s - running portable\n", path, mode[0] ? mode : "(none)");
+        port_save_base(save_dir_arg);
         return;
     }
     s_installed = true;
@@ -422,7 +436,7 @@ bool pc_installed(void) { return s_installed; }
 const char* pc_install_gamedata(void) { return s_installed && s_gamedata[0] ? s_gamedata : NULL; }
 const char* pc_install_userdata(void) { return s_installed && s_userdata[0] ? s_userdata : NULL; }
 const char* pc_install_version(void) { return s_version; }
-const char* pc_userdata_base(void) { return s_installed && s_base[0] ? s_base : NULL; }
+const char* pc_userdata_base(void) { return s_base[0] ? s_base : NULL; }
 
 const char* pc_local_gamedata_dir(void)
 {
@@ -452,7 +466,7 @@ void pc_install_setup_logs(void)
 #ifdef _WIN32
     char dir[1200], log[1300], old[1300];
     const char* base = pc_userdata_base();
-    if (!s_installed || !base) return;
+    if (!base) return;
     /* only when stdout is the console: redirected output (tests, the
      * installer, a user's "> file") is left alone */
     if (GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) != FILE_TYPE_CHAR) return;
