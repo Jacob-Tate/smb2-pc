@@ -19,6 +19,7 @@
 #include <windows.h>
 #endif
 
+#include "netplay/session.h"
 PcSettings g_pcs;
 static PcSettings s_file;     /* what settings.dat holds (no CLI overrides) */
 static int s_loaded;
@@ -242,6 +243,7 @@ void pcs_load(void) {
 }
 
 void pcs_save(void) {
+    if (pc_session_active()) return;   /* deterministic session: nothing is written to disk (E2) */
     char path[1100];
     FILE* f;
     if (!s_loaded) pcs_load();

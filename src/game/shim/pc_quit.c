@@ -23,6 +23,7 @@ struct TextBox;
 #include "pc_text.h"
 #include "pc_update.h"
 #include "pc_memcard_ui.h"
+#include "netplay/session.h"
 
 extern u32 fn_1_C2478(void);                /* hud.c: yes/no cursor flash */
 extern int pc_memcard_io_busy(void);        /* memcard.c (PC-only) */
@@ -221,7 +222,13 @@ static int s_menu_where;   /* PCMQ_TITLE / PCMQ_MODE_SELECT owning the box, 0 no
 int pc_menu_quit_tick(int where, int can_open, unsigned int open_buttons)
 {
     unsigned int press;
-    int esc = pc_input_esc_pressed();
+    int esc;
+
+    /* E1 D11: in a deterministic session none of this exists: no Esc (local,
+     * not on the wire), no update notes, no memory card notice, no quit box */
+    if (pc_session_active())
+        return -1;
+    esc = pc_input_esc_pressed();
 
     if (s_menu_where == where && pc_quit_requested())
         return PCQ_NONE;

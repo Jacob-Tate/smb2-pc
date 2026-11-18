@@ -21,6 +21,7 @@
 #include <time.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include "netplay/session.h"
 #ifdef _WIN32
 #include <windows.h>
 #include <direct.h>
@@ -106,6 +107,7 @@ typedef struct {
     u8 permission;
     u8 copyTimes;
     u16 firstBlock;    /* imported files: their block on the source card */
+    u8 *mem;           /* session card (E2): the file's data, never on disk */
 } CardEntry;
 
 static CardEntry s_dir[CARD_MAX_FILE];
@@ -227,6 +229,8 @@ static int write_meta(const CardEntry *e, int fileNo)
 
 static int save_meta(int fileNo)
 {
+    if (pc_session_active())   /* in-memory card: no sidecar */
+        return CARD_RESULT_READY;
     return write_meta(&s_dir[fileNo], fileNo);
 }
 
@@ -399,6 +403,12 @@ static void load_directory(void)
     struct dirent *de;
     char path[600];
 
+    if (pc_session_active()) {   /* E1 D4: the session card starts empty and lives in RAM */
+        if (!s_loaded)
+            memset(s_dir, 0, sizeof(s_dir));
+        s_loaded = 1;
+        return;
+    }
     memset(s_dir, 0, sizeof(s_dir));
     d = opendir(card_root());
     if (!d)
@@ -420,6 +430,8 @@ static void load_directory(void)
 
 static u32 card_time_now(void)
 {
+    if (pc_session_active())   /* E1 D4: fixed timestamp, same on every peer */
+        return pc_session_card_time();
     time_t t = time(NULL);
     /* local-time seconds since 2000-01-01, like OSTicksToSeconds(OSGetTime()) */
     struct tm *lt = localtime(&t);
@@ -595,6 +607,8 @@ static int backup_entry_files(const char *fileName, const char *reason, char *ou
 
 void pc_card_backup_file(s32 chan, s32 fileNo, const char *reason)
 {
+    if (pc_session_active())   /* nothing is on disk */
+        return;
     if (chan != 0 || fileNo < 0 || fileNo >= CARD_MAX_FILE || !s_dir[fileNo].used)
         return;
     backup_entry_files(s_dir[fileNo].fileName, reason ? reason : "bad", NULL, 0);
@@ -606,6 +620,8 @@ void pc_card_backup_file(s32 chan, s32 fileNo, const char *reason)
  * unparsable .meta, an orphan .bin, another game's file), so keep a copy. */
 static void backup_stray(const char *fileName)
 {
+    if (pc_session_active())
+        return;
     backup_entry_files(fileName, "stray", NULL, 0);
 }
 
@@ -620,7 +636,11 @@ static void remove_entry_files(const char *fileName)
 
 static s32 delete_fileno(s32 fileNo)
 {
-    remove_entry_files(s_dir[fileNo].fileName);
+    if (pc_session_active()) {
+        free(s_dir[fileNo].mem);
+        s_dir[fileNo].mem = NULL;
+    } else
+        remove_entry_files(s_dir[fileNo].fileName);
     memset(&s_dir[fileNo], 0, sizeof(s_dir[fileNo]));
     return CARD_RESULT_READY;
 }
@@ -860,6 +880,23 @@ s32 CARDCreateAsync(s32 chan, const char *fileName, u32 size, CARDFileInfo *file
     e->commentAddr = 0xFFFFFFFFu;
     e->permission = CARD_ATTR_PUBLIC;   /* as the SDK's CARDCreate */
 
+    if (pc_session_active()) {   /* in-memory file, zero-filled like a fresh one */
+        e->mem = (u8 *)calloc(1, size);
+        if (!e->mem) {
+            memset(e, 0, sizeof(*e));
+            return FINISH(chan, CARD_RESULT_IOERROR, cb);
+        }
+        e->used = 1;
+        if (fileInfo) {
+            fileInfo->chan = chan;
+            fileInfo->fileNo = no;
+            fileInfo->offset = 0;
+            fileInfo->length = 0;
+            fileInfo->iBlock = (u16)(5 + no);
+        }
+        return FINISH(chan, CARD_RESULT_READY, cb);
+    }
+
     /* zero-filled data file of the full size */
     entry_path(e->fileName, ".bin", path, sizeof(path));
     f = fopen(path, "wb");
@@ -939,6 +976,12 @@ s32 CARDRenameAsync(s32 chan, const char *oldName, const char *newName, CARDCall
     if (find_file(newName) >= 0)
         return FINISH(chan, CARD_RESULT_EXIST, NULL);
     e = &s_dir[no];
+    if (pc_session_active()) {   /* in memory: only the name changes */
+        memset(e->fileName, 0, sizeof(e->fileName));
+        strncpy(e->fileName, newName, CARD_FILENAME_MAX);
+        e->time = card_time_now();
+        return FINISH(chan, CARD_RESULT_READY, cb);
+    }
     backup_stray(newName);
 
     entry_path(e->fileName, ".bin", oldPath, sizeof(oldPath));
@@ -1049,6 +1092,12 @@ s32 CARDReadAsync(CARDFileInfo *fileInfo, void *buf, s32 length, s32 offset, CAR
     r = seek_check(fileInfo, length, offset, &e);
     if (r != CARD_RESULT_READY)
         return FINISH(chan, r, NULL);
+    if (pc_session_active()) {
+        memcpy(buf, e->mem + offset, (size_t)length);
+        fileInfo->offset += length;
+        s_xferred[0] += length;
+        return FINISH(chan, CARD_RESULT_READY, cb);
+    }
     entry_path(e->fileName, ".bin", path, sizeof(path));
     f = fopen(path, "rb");
     if (f) {
@@ -1083,6 +1132,12 @@ s32 CARDWriteAsync(CARDFileInfo *fileInfo, const void *buf, s32 length, s32 offs
     r = seek_check(fileInfo, length, offset, &e);
     if (r != CARD_RESULT_READY)
         return FINISH(chan, r, NULL);
+    if (pc_session_active()) {
+        memcpy(e->mem + offset, buf, (size_t)length);
+        fileInfo->offset += length;
+        s_xferred[0] += length + CARD_SECTOR_SIZE;
+        return FINISH(chan, CARD_RESULT_READY, cb);
+    }
     entry_path(e->fileName, ".bin", path, sizeof(path));
     if (offset == 0 && (u32)length == e->length)
         f = fopen(path, "wb");
@@ -1122,7 +1177,7 @@ s32 CARDWriteAsync(CARDFileInfo *fileInfo, const void *buf, s32 length, s32 offs
  */
 #include "pc_card.h"
 
-const char *pc_card_slot_dir(void) { return card_root(); }
+const char *pc_card_slot_dir(void) { return pc_session_active() ? "" : card_root(); }
 
 /* After an in-game import: the card reads as removed until the restart, so
  * nothing the running game still holds in memory can be saved over the
@@ -1138,7 +1193,7 @@ void pc_card_freeze(void)
 const char *pc_card_base_dir(void)
 {
     static char base[520];
-    const char *slot = card_root();
+    const char *slot = pc_session_active() ? "" : card_root();   /* session: no disk card */
     size_t l = strlen(slot);
     if (!base[0] && l >= 6 && l - 6 < sizeof(base)) {
         memcpy(base, slot, l - 6);
@@ -1168,7 +1223,7 @@ static void entry_to_file(const CardEntry *e, int fileNo, PcCardFile *f)
 
 int pc_card_list(PcCardFile *out, int max)
 {
-    DIR *d = opendir(card_root());
+    DIR *d = pc_session_active() ? NULL : opendir(card_root());   /* session: no disk card */
     struct dirent *de;
     int n = 0, i;
 
@@ -1210,6 +1265,8 @@ u8 *pc_card_read(const PcCardFile *f)
     long len;
     u8 *buf, *data;
 
+    if (pc_session_active())
+        return NULL;
     entry_path(f->fileName, ".bin", path, sizeof(path));
     data = read_whole(path, &len);
     if (!data || len < 0)
@@ -1233,6 +1290,8 @@ int pc_card_store(const PcCardFile *f, const u8 *data, char *backup, size_t back
     int n, i, no = -1, blocks = 0, replaced = -1;
     u8 used[CARD_MAX_FILE];
 
+    if (pc_session_active())   /* the session card never touches disk */
+        return PC_CARD_E_IO;
     if (backup && backupsz)
         backup[0] = 0;
     if (!f->fileName[0] || f->length == 0 || (f->length % CARD_SECTOR_SIZE) != 0)

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "perf.h"
+#include "netplay/session.h"
 
 /* ---- render modes (SDK GXNtsc480IntDf and friends) ---- */
 #define SP_DEFAULT {{6,6},{6,6},{6,6},{6,6},{6,6},{6,6},{6,6},{6,6},{6,6},{6,6},{6,6},{6,6}}
@@ -303,7 +304,7 @@ void video_finish_frame(void)
     {
         static int roll = -1;
         extern s32 main_mode, sub_mode, sub_mode_request;
-        if (roll < 0) roll = getenv("SMB2_PC_ROLL") && atoi(getenv("SMB2_PC_ROLL")) > 0;
+        if (roll < 0) roll = pc_session_dbg_getenv("SMB2_PC_ROLL") && atoi(pc_session_dbg_getenv("SMB2_PC_ROLL")) > 0;
         if (roll && main_mode == 2 && sub_mode == 0x31)
             sub_mode_request = 0x53;
     }
@@ -334,6 +335,9 @@ void video_finish_frame(void)
         }
     }
 
+    /* deterministic session (E2): the poll counter advances here; E3 hooks the
+     * pad exchange and the checksum at this point (see docs/handoff/E2.md) */
+    pc_session_on_poll();
     input_poll_gc_pads();
     platform_poll_events();
     {
@@ -345,7 +349,15 @@ void video_finish_frame(void)
             pc_quit_request("window closed");
         pc_quit_poll();
     }
-    {
+    if (pc_session_active()) {
+        /* E1 D12: no modal local screens in a session (F1 overlay, Controller
+         * Sticks, updater, Memory Card screen): they poll pads themselves and
+         * stall the loop.  Pending requests are dropped. */
+        extern int pc_settings_overlay_take_request(void);
+        extern int pc_stick_screen_take_request(void);
+        (void)pc_settings_overlay_take_request();
+        (void)pc_stick_screen_take_request();
+    } else {
         /* F1: PC settings overlay (pc_settings_menu.c), modal over the
          * finished-but-unpresented frame */
         extern int pc_settings_overlay_take_request(void);

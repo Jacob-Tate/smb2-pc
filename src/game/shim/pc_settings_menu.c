@@ -30,6 +30,7 @@ struct TextBox;
 #include "pc_text.h"
 #include "pc_update.h"
 #include "pc_memcard_ui.h"
+#include "netplay/session.h"
 
 /* ---- game symbols not (correctly) declared in the headers ---- */
 struct ScreenOption {
@@ -70,7 +71,10 @@ void pc_game_set_wide_mode(int wide) { modeCtrl.wideMode = wide ? 1 : 0; }
  * ====================================================================== */
 #define GAME_ROWS 2
 #define QUIT_ROW (GAME_ROWS + PCS_ITEM_COUNT)
-#define ROW_COUNT (QUIT_ROW + 1)
+#define ROW_COUNT_FULL (QUIT_ROW + 1)
+/* E1 D10: a session shows only the game's 2 rows (the PC rows depend on local
+ * state and mutate local settings from replicated menu input) */
+#define ROW_COUNT (pc_session_active() ? GAME_ROWS : ROW_COUNT_FULL)
 #define ROW_SPACING 20.5f   /* F1 overlay: 14 rows */
 /* the Options page has to fit 16 rows (2 game + 13 PC + Quit) above the
  * game's description box */

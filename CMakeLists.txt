@@ -127,6 +127,7 @@ endif()
 # Include directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
     ${SDL2_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIR}
     ${MINIAUDIO_INCLUDE_DIR}
@@ -155,6 +156,7 @@ set(SOURCES
     src/platform/install_mode.c
     src/platform/pc_update.c
     src/platform/pc_file_dialog.c
+    src/netplay/session.c
     src/main/main.c
 )
 

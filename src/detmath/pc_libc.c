@@ -157,3 +157,9 @@ double pc_atof(const char *s)
     }
     return neg ? -r : r;
 }
+
+/* current rand() state (determinism logs / checksums, netplay E3) */
+uint32_t pc_rand_state(void)
+{
+    return s_rand_next;
+}
