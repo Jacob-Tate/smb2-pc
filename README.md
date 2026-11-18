@@ -300,6 +300,9 @@ The PC port and the decompilation it builds on are both released under the
   `third_party/miniaudio/`.
 - [stb_image](https://github.com/nothings/stb) by Sean Barrett (public domain
   or MIT), `third_party/stb/`.
+- [Zstandard](https://github.com/facebook/zstd) 1.5.7 by Meta Platforms, Inc.
+  (BSD license; decompressor only, used to read RVZ disc images),
+  `third_party/zstd/`.
 - fdlibm 5.3, Copyright (C) 1993 Sun Microsystems, Inc. (permissive notice in
   each file), `src/detmath/fdlibm/`.
 - Controller button prompt icons: "Free Input Pack" by Julio Cacko
