@@ -36,7 +36,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | A1 | Default to windowed instead of fullscreen | P0.3 | settings | REVIEW (merged 81bb9a9; user visual check pending) |
 | B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | DONE (0be1727) |
 | B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | DONE (7e17185) |
-| B3 | RVZ in dialogs, installer, help text, gamedata.c | B2, **C2c** (both edit platform_sdl2.c) | disc+installer | IN PROGRESS (task/B3F2 together with F2, 2026-11-17) |
+| B3 | RVZ in dialogs, installer, help text, gamedata.c | B2, **C2c** (both edit platform_sdl2.c) | disc+installer | DONE (c5b51f6) |
 | B4 | RVZ verification vs. the user's ISO | B2 | disc | DONE (SHA-256 identical, in B2) |
 | B5 | (Optional) RVZ hardening: check header SHA-1s / zstd frame checksums | B2 | disc | TODO (low priority) |
 | C1 | Steam Controller diagnosis (research) | – | input | DONE (docs/handoff/C1.md) |
@@ -45,9 +45,9 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | C2c | Port platform/video/render/audio/assets glue to SDL3 **together with C2d** (one exe can't link SDL2 and SDL3) | C2b, P0.4 | platform+input | REVIEW (merged c01ae12; user checks controller, keyboard, dialogs) |
 | C2d | Port input to SDL3 gamepad API; Steam Controller works | (inside C2c) | input | REVIEW (merged c01ae12, inside C2c) |
 | C2e | README/docs for SDL3; pin version | C2d | docs | DONE (README build steps + credits done in C2c) |
-| D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | IN PROGRESS (task/D1, 2026-11-17) |
-| D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | TODO |
-| D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | TODO |
+| D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | DONE (227973c) |
+| D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | IN PROGRESS (task/D2, 2026-11-17) |
+| D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | TODO (after E3: both edit input_sdl2.c) |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
@@ -62,7 +62,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
 | F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | REVIEW (merged 2f493e9; user checks Shift-start dialog) |
-| F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | IN PROGRESS (task/B3F2 with B3, 2026-11-17) |
+| F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | DONE (c5b51f6, fix 372d700) |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
@@ -753,3 +753,17 @@ Candidate fixes (choose from C1's results; likely several):
   **User REVIEW**: hold Shift while starting SMB2.exe → confirmation dialog lists the two folders; No cancels.
 - Smoke scripts now accept relative exe paths (tools/smoke/common.sh).
 - Next wave (parallel): B3+F2 (one agent; both small, both edit platform_sdl2.c), D1 (ImGui, SDL3+GL), E3.
+- **B3+F2 merged (c5b51f6)**: `.rvz` in every picker/filter/text, installer and READMEs. Build id
+  `<commit count>-<sha7>[+dirty]` from `cmake/build_id.cmake` (only `src/platform/build_id.c` recompiles):
+  window title "Super Monkey Ball 2 – build N (sha)", first log line, `--version`, old F1 overlay text,
+  SessionConfig.build_id, friend-build unpack folder. Orchestrator fix 372d700: WSL git saw the CRLF Windows
+  checkout as dirty → now `git -c core.autocrlf=true diff --quiet HEAD`. Notes: `installer/build.sh` assumes
+  `../decomp` → pass `SMB2_DECOMP_DIR=/mnt/c/Users/jacob/source/super_monkey/smb2-decomp`; in sibling worktrees
+  the build id needs `git.exe` reachable from WSL (it is).
+- **D1 merged (227973c)**: Dear ImGui 1.91.9b in `third_party/imgui/` (sdl3 + opengl3 compiled, dx12 copied),
+  `smb2_overlay` lib, `include/overlay.h` / `src/overlay/overlay.cpp`, placeholder window on **F2** (temporary),
+  test flags `--overlay-open`, `--overlay-open-frames a-b`. GL state verified unchanged after closing. Merged
+  build: both arches build, party_race_2p PASS on both, overlay starts. Test caveat: attract/title frames
+  ~700–800 differ in pixels between runs even with --det-session (detlog/sim matches) → use menu frames
+  after the START presses (1560+) for pixel comparisons; E4 should check whether that's render-only.
+- Started D2 (D3D12 overlay). D3 waits for E3 (input_sdl2.c).
