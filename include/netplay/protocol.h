@@ -46,6 +46,8 @@ extern "C" {
 #define SMB_NET_MAX_INPUT_DELAY 30
 #define SMB_NET_LATE_MS 20            /* server: lateness beyond a client's usual that counts as "late" */
 #define SMB_NET_CLIENT_ID_NONE 0xFF
+#define SMB_CAP_RESUME 0x01           /* server understands RELAUNCHING / RESUME */
+#define SMB_NET_RESUME_GRACE_MS 90000 /* a relaunching member has this long to come back */
 
 /* Compile-time size check usable from C99 and C++. */
 #define SMB_NET_STATIC_ASSERT(name, cond) typedef char smb_net_assert_##name[(cond) ? 1 : -1]
@@ -73,9 +75,18 @@ typedef enum SmbNetMsg {
     SMB_MSG_CHOOSE = 8,      /* lobby: u8 port (0-3 or SMB_NET_KEEP). Move to a free port. */
     SMB_MSG_PERF = 9,        /* u32 poll, u16 polls, u16 slowPolls, u16 stalls, u16 worstMs (since the last PERF) */
     SMB_MSG_END_GAME = 10,   /* host only: end the running game for everyone (room returns to the lobby) */
+    /* E8 (additive, protocol version unchanged; needs SMB_CAP_RESUME in the trailing byte of WELCOME): "I got
+     * GAME_START and am restarting the program for the session; I will be back". Sent in a running game right
+     * before disconnecting: u32 token (random, chosen by the client). The server then keeps the member's seat
+     * (no drop) for SMB_NET_RESUME_GRACE_MS instead of treating the disconnect as a leave. */
+    SMB_MSG_RELAUNCHING = 11,
+    /* Sent by the restarted process right after HELLO instead of CREATE/JOIN: char code[4], u8 clientId (the id
+     * WELCOME gave the old process), u32 token. The server rebinds the seat to the new connection and answers with
+     * WELCOME (old id), ROOM_STATE, GAME_START (same config/epoch/ports/seq as the original). */
+    SMB_MSG_RESUME = 12,
 
     /* server -> client */
-    SMB_MSG_WELCOME = 64,    /* u8 clientId */
+    SMB_MSG_WELCOME = 64,    /* u8 clientId, [u8 caps (SMB_CAP_*); absent from servers older than E8] */
     SMB_MSG_ERROR = 65,      /* u8 SmbNetError, str message */
     /* char code[4], u8 hostId, u8 count, count x (u8 id, str name, u16 pingMs: round trip to the server),
      * 4 x u8 owner (client id or SMB_NET_PORT_NONE), u8 phase (SMB_ROOM_*). */
