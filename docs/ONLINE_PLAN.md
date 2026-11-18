@@ -700,3 +700,6 @@ Candidate fixes (choose from C1's results; likely several):
   the orchestrator), ~500–690 MB/s. Boots and `--extract-iso` from the RVZ work on both arches. B4 is done
   inside B2. Note: corruption inside a group is only caught if zstd notices it → optional B5.
   B3 waits for C2c (picker strings live in platform_sdl2.c).
+- **Server deployed by the user at 10.0.0.5:7855** (Portainer stack `smb2`). Orchestrator ran
+  `build/server/smb2-server-test 10.0.0.5 7855` from WSL: 77 checks, ALL PASSED. Use `10.0.0.5:7855` as the
+  default/test server address in E6/E7.
