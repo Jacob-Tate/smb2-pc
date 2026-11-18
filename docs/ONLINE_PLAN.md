@@ -58,7 +58,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | DONE (merge + fixup d42e44d) |
 | E7 | Online lobby UI in the overlay | D4, E6, E8 | overlay+netplay | TODO |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | DONE (aa213ab; needs server redeploy for in-game start) |
-| E9 | Disconnect → CPU/neutral pad, desync handling | E6, E8 | netplay | TODO |
+| E9 | Disconnect → CPU/neutral pad, desync handling | E6, E8 | netplay | IN PROGRESS (task/E9, 2026-11-17) |
 | E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
 | F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | REVIEW (merged 2f493e9; user checks Shift-start dialog) |
