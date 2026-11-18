@@ -192,14 +192,16 @@ add_executable(smb2_pc_port ${SOURCES})
 # libgcc statically, so no C++ runtime DLL appears next to the exe.
 add_library(smb2_overlay STATIC
     src/overlay/overlay.cpp
+    src/overlay/overlay_d3d12.cpp
     third_party/imgui/imgui.cpp
     third_party/imgui/imgui_draw.cpp
     third_party/imgui/imgui_tables.cpp
     third_party/imgui/imgui_widgets.cpp
     third_party/imgui/imgui_demo.cpp
     third_party/imgui/backends/imgui_impl_sdl3.cpp
-    third_party/imgui/backends/imgui_impl_opengl3.cpp)
-target_include_directories(smb2_overlay PRIVATE ${CMAKE_SOURCE_DIR}/third_party/imgui)
+    third_party/imgui/backends/imgui_impl_opengl3.cpp
+    third_party/imgui/backends/imgui_impl_dx12.cpp)
+target_include_directories(smb2_overlay PRIVATE ${CMAKE_SOURCE_DIR}/third_party/imgui ${CMAKE_SOURCE_DIR}/src/overlay)
 target_compile_definitions(smb2_overlay PRIVATE SDL_MAIN_HANDLED)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(smb2_overlay PRIVATE -fno-exceptions -fno-rtti -O2 -ffp-contract=off)
