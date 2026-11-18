@@ -47,15 +47,15 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | C2e | README/docs for SDL3; pin version | C2d | docs | DONE (README build steps + credits done in C2c) |
 | D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | DONE (227973c) |
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | DONE (c2733e4) |
-| D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | TODO (after E3: both edit input_sdl2.c) |
+| D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | IN PROGRESS (task/D3, 2026-11-17) |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
 | E2 | Deterministic session mode (`--det-session`) | E1 | game shim | DONE (f688666) |
 | E3 | Input record/replay + state checksum | E2 | input+shim | DONE (3e0e393) |
-| E4 | Local determinism test (two runs, same checksums) | E3 | tools | TODO |
+| E4 | Local determinism test (two runs, same checksums) | E3 | tools | IN PROGRESS (task/E4, 2026-11-17) |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
-| E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | TODO |
+| E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | IN PROGRESS (task/E6, 2026-11-17) |
 | E7 | Online lobby UI in the overlay | D4, E6 | overlay+netplay | TODO |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | TODO |
 | E9 | Disconnect → CPU/neutral pad, desync handling | E6 | netplay | TODO |
@@ -64,7 +64,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | REVIEW (merged 2f493e9; user checks Shift-start dialog) |
 | F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | DONE (c5b51f6, fix 372d700) |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
-| X1 | Integer divide-by-zero crash (0xC0000094) in Mode Select: script `1350:START,1450:START,1550:START,1800:A,2300:A,2400:RIGHT,2420:RIGHT`, no pad; also on pre-E3 builds | – | game shim | TODO (found by E3 agent) |
+| X1 | Integer divide-by-zero crash (0xC0000094) in Mode Select: script `1350:START,1450:START,1550:START,1800:A,2300:A,2400:RIGHT,2420:RIGHT`, no pad; also on pre-E3 builds | – | game shim | IN PROGRESS (task/X1, 2026-11-17; found by E3 agent) |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
 Dependency graph (parallel lanes after P0.3):
@@ -553,7 +553,7 @@ Candidate fixes (choose from C1's results; likely several):
 ### E4 Local determinism tests
 - **Files**: `tools/determinism/` (script running N replays in parallel, comparing checksum logs;
   partyboard's `tools/autotest.py` is the model).
-- **Acceptance**: same replay, 3 runs each on x64 and i686, at `--fps 60` and `--fps 144`, GL and
+- **Acceptance**: same replay, 3 runs each on x64 (i686 dropped, D-9), at `--fps 60` and `--fps 144`, GL and
   D3D12: all checksum logs identical. Any mismatch → new E2 fix, re-run.
 
 ### E5 Protocol + relay server
@@ -576,7 +576,7 @@ Candidate fixes (choose from C1's results; likely several):
   a "waiting for <name>" message; checksums sent every 60 frames.
 - **Acceptance**: two local instances against a local server, scripted input on both
   (`--input-script`), `--max-frames 3600`: both checksum logs identical and equal to a `--replay`
-  of the recorded inputs. Also one x64 + one i686 instance.
+  of the recorded inputs. (x64 + i686 mix dropped, D-9.)
 
 ### E7 Lobby UI (overlay "Online" tab)
 - **Files**: `src/overlay/online.cpp`, title-screen hint ("F1 / Back+Start: Online").
@@ -800,3 +800,4 @@ Candidate fixes (choose from C1's results; likely several):
   (`SMB2_TEST_IGNORE_PAD=` to disable); any other test harness (E4, E6) must do the same. This may also matter for the
   C2c Steam Controller REVIEW (drift / phantom C-stick?).
   Scripted path to a Main Game stage: docs/handoff/E3.md. New bug X1 (divide-by-zero in Mode Select).
+- Next wave started (Sonnet, worktrees `../wt/<ID>`): D3, E4, E6, X1. D3 and E6 may both touch platform_sdl2.c: second to merge rebases.
