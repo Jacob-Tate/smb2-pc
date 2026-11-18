@@ -16,8 +16,10 @@ foreach(_g IN LISTS _gits)
         if(_r1 EQUAL 0 AND _r2 EQUAL 0 AND _c MATCHES "^[0-9]+$" AND _s MATCHES "^[0-9a-f]+$")
             set(_count "${_c}")
             set(_sha "${_s}")
-            # tracked files only: scratch files in the tree don't count
-            execute_process(COMMAND ${_g} diff-index --quiet HEAD -- WORKING_DIRECTORY "${SRC_DIR}"
+            # tracked files only: scratch files in the tree don't count.  `diff` compares
+            # content (diff-index trips over stat changes), and core.autocrlf=true makes WSL
+            # git read the Windows checkout's CRLF files the way Windows git does.
+            execute_process(COMMAND ${_g} -c core.autocrlf=true diff --quiet HEAD -- WORKING_DIRECTORY "${SRC_DIR}"
                             RESULT_VARIABLE _rd ERROR_QUIET OUTPUT_QUIET)
             if(NOT _rd EQUAL 0)
                 set(_dirty "+dirty")
