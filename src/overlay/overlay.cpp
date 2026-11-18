@@ -312,8 +312,7 @@ void overlay_toast(int type, const char* title, const char* body) {
     snprintf(t.body, sizeof t.body, "%s", body ? body : "");
     t.t0 = SDL_GetTicks();
     t.dur = 4000 + (Uint64)strlen(t.body) * 30;
-    printf("[overlay] toast (%d): %s - %s
-", type, t.title, t.body);
+    printf("[overlay] toast (%d): %s - %s\n", type, t.title, t.body);
     fflush(stdout);
 }
 
