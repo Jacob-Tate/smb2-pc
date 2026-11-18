@@ -35,9 +35,10 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | P0.4 | Headless test harness doc + smoke scripts | P0.3 | tools | DONE (bc95b0b) |
 | A1 | Default to windowed instead of fullscreen | P0.3 | settings | REVIEW (merged 81bb9a9; user visual check pending) |
 | B1 | Disc reader abstraction (`DiscReader`) in iso.c | P0.3 | disc | DONE (0be1727) |
-| B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | IN PROGRESS (task/B2 incl. B4, 2026-11-17) |
-| B3 | RVZ in dialogs, installer, help text, gamedata.c | B2 | disc+installer | TODO |
-| B4 | RVZ verification vs. the user's ISO | B2 | disc | TODO |
+| B2 | RVZ decoder (zstd, GC-only, junk regen) | B1 | disc | DONE (7e17185) |
+| B3 | RVZ in dialogs, installer, help text, gamedata.c | B2, **C2c** (both edit platform_sdl2.c) | disc+installer | TODO (after C2c) |
+| B4 | RVZ verification vs. the user's ISO | B2 | disc | DONE (SHA-256 identical, in B2) |
+| B5 | (Optional) RVZ hardening: check header SHA-1s / zstd frame checksums | B2 | disc | TODO (low priority) |
 | C1 | Steam Controller diagnosis (research) | – | input | DONE (docs/handoff/C1.md) |
 | C2a | `--list-controllers` diagnostic flag | – | input | SKIPPED (SDL2 can't support the controller anyway; the flag moves into C2d, on SDL3) |
 | C2b | SDL3 3.4.x static build for i686 + x86_64 MinGW (`tools/build_sdl3_mingw.sh`) | P0.2 | env | DONE (49c8af2) |
@@ -694,3 +695,8 @@ Candidate fixes (choose from C1's results; likely several):
   Add stack `smb2` with `server/portainer-stack.yml`; open UDP 7855; check with
   `docker exec $(docker ps -qf name=smb2_relay) smb2-server-test 127.0.0.1 7855`.
 - C2c started as one task covering C2c + C2d (task/C2c): one exe can't link SDL2 and SDL3 at once.
+- B2 merged (7e17185): `src/assets/rvz.{c,h}`, zstd 1.5.7 decoder in `third_party/zstd/`, hidden
+  `--rvz-dump <in> <out.iso>`. **Decoded RVZ is byte-identical to the ISO** (SHA-256 b3e40531…, re-checked by
+  the orchestrator), ~500–690 MB/s. Boots and `--extract-iso` from the RVZ work on both arches. B4 is done
+  inside B2. Note: corruption inside a group is only caught if zstd notices it → optional B5.
+  B3 waits for C2c (picker strings live in platform_sdl2.c).
