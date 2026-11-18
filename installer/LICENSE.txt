@@ -8,7 +8,7 @@ affiliates. "Super Monkey Ball" is a trademark of SEGA.
 
 This package contains NO game content. To play, you need your own copy of
 Super Monkey Ball 2 for the Nintendo GameCube (USA release, disc ID GM2E8P)
-as a disc image (.iso or .gcm) that you made from a disc you own. During setup
+as a disc image (.iso, .gcm or .rvz) that you made from a disc you own. During setup
 the game data is extracted from YOUR disc image onto this computer only.
 The game icon shown after setup is also generated from your own disc image.
 

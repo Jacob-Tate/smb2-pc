@@ -196,7 +196,7 @@ Var ExSkip
 !define MUI_CUSTOMFUNCTION_ABORT OnUserAbortHook
 
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${APPNAME} ${VERSION} Setup"
-!define MUI_WELCOMEPAGE_TEXT "This installs ${APPNAME}, an unofficial, non-commercial PC port of Super Monkey Ball 2 for the GameCube.$\r$\n$\r$\nNo game content is included. You need your own Super Monkey Ball 2 GameCube disc image (USA version, disc ID GM2E8P, .iso or .gcm) made from a disc you own. Setup extracts the game data from it (about 1 GB). You can also skip that step and choose the disc image later in the game.$\r$\n$\r$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "This installs ${APPNAME}, an unofficial, non-commercial PC port of Super Monkey Ball 2 for the GameCube.$\r$\n$\r$\nNo game content is included. You need your own Super Monkey Ball 2 GameCube disc image (USA version, disc ID GM2E8P, .iso, .gcm or .rvz) made from a disc you own. Setup extracts the game data from it (about 1 GB). You can also skip that step and choose the disc image later in the game.$\r$\n$\r$\nClick Next to continue."
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipInUpdateMode
 !insertmacro MUI_PAGE_WELCOME
 
@@ -885,7 +885,7 @@ Function IsoPageCreate
   ${If} $IsoDlg == error
     Abort
   ${EndIf}
-  ${NSD_CreateLabel} 0 0 100% 50u "${APPNAME} needs the game data from YOUR OWN copy of the game: a disc image of Super Monkey Ball 2 for the Nintendo GameCube, USA version (disc ID GM2E8P), as an .iso or .gcm file that you made from a disc you own. No game content is included with this program.$\r$\n$\r$\nSetup extracts about 1 GB into the install folder:  $GameDataDir"
+  ${NSD_CreateLabel} 0 0 100% 50u "${APPNAME} needs the game data from YOUR OWN copy of the game: a disc image of Super Monkey Ball 2 for the Nintendo GameCube, USA version (disc ID GM2E8P), as an .iso, .gcm or .rvz file that you made from a disc you own. No game content is included with this program.$\r$\n$\r$\nSetup extracts about 1 GB into the install folder:  $GameDataDir"
   Pop $0
   ${NSD_CreateText} 0 56u 75% 13u "$IsoPath"
   Pop $IsoEdit
@@ -958,7 +958,7 @@ FunctionEnd
 Function IsoBrowseClick
   Pop $0
   ${NSD_GetText} $IsoEdit $0
-  nsDialogs::SelectFileDialog open "$0" "GameCube disc image (*.iso;*.gcm)|*.iso;*.gcm|All files (*.*)|*.*"
+  nsDialogs::SelectFileDialog open "$0" "GameCube disc image (*.iso;*.gcm;*.rvz)|*.iso;*.gcm;*.rvz|All files (*.*)|*.*"
   Pop $0
   ${If} $0 != ""
   ${AndIf} $0 != "error"
@@ -1440,7 +1440,7 @@ Function ExFinished
   ${ElseIf} $ExtractCode == 2
     StrCpy $1 "This file is not a GameCube disc image (a Wii disc or another kind of file)."
   ${ElseIf} $ExtractCode == 3
-    StrCpy $1 "The disc image could not be read. It may be damaged or incomplete, or in a format that is not supported (use a plain .iso or .gcm dump of the disc)."
+    StrCpy $1 "The disc image could not be read. It may be damaged or incomplete, or in a format that is not supported (use a plain .iso or .gcm dump, or an .rvz made with zstd or no compression; other RVZ compressions must be re-converted in Dolphin)."
   ${ElseIf} $ExtractCode == 4
     StrCpy $1 "The game data could not be written to $GameDataDir. Make sure the drive has at least ${FREE_NEEDED_MB} MB free and is working."
   ${Else}
@@ -1462,7 +1462,7 @@ FunctionEnd
 
 Function ExPickClick
   Pop $0
-  nsDialogs::SelectFileDialog open "$IsoPath" "GameCube disc image (*.iso;*.gcm)|*.iso;*.gcm|All files (*.*)|*.*"
+  nsDialogs::SelectFileDialog open "$IsoPath" "GameCube disc image (*.iso;*.gcm;*.rvz)|*.iso;*.gcm;*.rvz|All files (*.*)|*.*"
   Pop $0
   ${If} $0 == ""
   ${OrIf} $0 == "error"

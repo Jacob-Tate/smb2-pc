@@ -8,9 +8,13 @@ platform layer (SDL3, OpenGL 3.3 or Direct3D 12, miniaudio) that stands in for
 the GameCube hardware and SDK. It is **not an emulator**.
 
 **You need your own, legally obtained copy of the game**: a disc image
-(`.iso` / `.gcm`) of the USA release, disc ID **GM2E8P**, made from a disc you
+(`.iso`, `.gcm` or `.rvz`) of the USA release, disc ID **GM2E8P**, made from a disc you
 own. This repository contains **no game assets** (no textures, models, audio
 or disc files). The game data is read from your disc image at run time.
+
+`.rvz` (Dolphin's compressed format) is read directly, no conversion needed, if it was
+made with zstd compression or no compression (Dolphin's default is zstd). RVZ files made with
+other compressions (bzip2, LZMA) must be re-converted in Dolphin (right-click the game, Convert).
 
 Modded disc images work if the mod replaces game files (stages, textures,
 sounds); code mods (DOL edits, Gecko/AR codes) don't apply, because the port
@@ -105,7 +109,7 @@ They are stored in `settings.dat`. Command-line options override them for one
 run; `smb2_pc_port.exe --help` lists them all, the main ones:
 
 ```
---iso <file>          disc image (GM2E8P .iso/.gcm); saved for later starts
+--iso <file>          disc image (GM2E8P .iso/.gcm/.rvz); saved for later starts
 --gamedata <dir>      extracted game data folder instead of an image
 --renderer gl|d3d12   renderer
 --fps <n>             60 (default), 120, 144, 240, ..., display or uncapped

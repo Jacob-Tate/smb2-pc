@@ -82,6 +82,7 @@ Super Monkey Ball 2 (PC port) - single-file version
 
 SMB2.exe is the whole game in one file. You need your own copy of the game disc image
 (Super Monkey Ball 2, USA / GM2E8P) as .iso, .gcm or .rvz. It is not included.
+RVZ files must use zstd (Dolphin default) or no compression; others: re-convert in Dolphin.
 
 Use
   1. Put SMB2.exe anywhere (Desktop, a USB stick, ...) and double-click it.

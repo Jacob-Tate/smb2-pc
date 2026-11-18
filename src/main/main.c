@@ -251,7 +251,7 @@ int main(int argc, char* argv[]) {
             printf("  --language <l>    Game language: auto, en, de, fr, es, it or ja\n"
                    "                    (this run only; default: settings.dat, else auto)\n");
             printf("  --save-dir <dir>  Directory for settings.dat and saves\n");
-            printf("  --iso <file>      Game disc image (GM2E8P .iso/.gcm)\n");
+            printf("  --iso <file>      Game disc image (GM2E8P .iso/.gcm/.rvz)\n");
             printf("  --gamedata <dir>  Extracted game data folder (instead of an ISO)\n");
             printf("  --extract-iso <file> --gamedata <dir> [--progress]\n"
                    "                    Extract + verify the disc into <dir> (headless)\n");

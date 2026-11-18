@@ -751,7 +751,7 @@ static bool iso_pick_test(char** out_path) {
 static bool iso_pick_console(char** out_path) {
     char input[1024];
     pc_user_msg("\n=== Disc image ===\n");
-    pc_user_msg("Enter the path of your GM2E8P .iso/.gcm (blank to quit):\n> ");
+    pc_user_msg("Enter the path of your GM2E8P .iso/.gcm/.rvz (blank to quit):\n> ");
     if (fgets(input, sizeof(input), stdin)) {
         input[strcspn(input, "\r\n")] = '\0';
         /* Strip surrounding quotes (Windows "Copy as path" adds them) */
@@ -812,7 +812,7 @@ static int iso_pick_dialog(const char* initial, char** out_path) {
         file[0] = 0;
         memset(&ofn, 0, sizeof ofn);
         ofn.lStructSize = sizeof ofn;
-        ofn.lpstrFilter = L"GameCube disc image (*.iso;*.gcm)\0*.iso;*.gcm\0All files (*.*)\0*.*\0";
+        ofn.lpstrFilter = L"GameCube disc image (*.iso;*.gcm;*.rvz)\0*.iso;*.gcm\0All files (*.*)\0*.*\0";
         ofn.lpstrFile = file;
         ofn.nMaxFile = 4096;
         ofn.lpstrInitialDir = dir[0] ? dir : NULL;
@@ -965,7 +965,7 @@ static char* pick_disc_image(const char* initial, ISOArchive** out_arc) {
             return path;
         }
         snprintf(text, sizeof text, "This file can't be used:\n%s\n\nSelect your Super Monkey "
-                 "Ball 2 disc image (USA, GM2E8P, .iso/.gcm).", msg);
+                 "Ball 2 disc image (USA, GM2E8P, .iso/.gcm/.rvz).", msg);
         iso_notice("SMB2 - unusable disc image", text, true);
         free(path);
     }
@@ -1205,7 +1205,7 @@ bool platform_recover_gamedata(const char* why) {
     }
     snprintf(text, sizeof text,
              "The game data is missing or damaged:\n%s\n\n"
-             "Select your Super Monkey Ball 2 (USA, GM2E8P) disc image (.iso/.gcm) in the next "
+             "Select your Super Monkey Ball 2 (USA, GM2E8P) disc image (.iso/.gcm/.rvz) in the next "
              "window. It will be extracted to\n%s\n(about 1 GB, no administrator rights needed).",
              why, dest);
     pc_user_msg("\n%s\n", text);
