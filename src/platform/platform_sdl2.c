@@ -163,7 +163,7 @@ static void sdl2_poll_events(PlatformContext* ctx) {
 
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
-        /* ImGui overlay (F2 toggles).  Game input is gated at the pad sampling
+        /* ImGui overlay (F1 toggles, in overlay_process_event).  Game input is gated at the pad sampling
          * point (input_sdl2.c), not here. */
         (void)overlay_process_event(&event);
         switch (event.type) {
@@ -176,9 +176,7 @@ static void sdl2_poll_events(PlatformContext* ctx) {
             case SDL_EVENT_KEY_DOWN:
                 /* PC port hotkeys (game buttons are read from the keyboard
                  * state in input_poll_gc_pads) */
-                if (!event.key.repeat && event.key.key == SDLK_F1)
-                    pc_settings_overlay_request();
-                else if (!event.key.repeat && event.key.key == SDLK_RETURN &&
+                if (!event.key.repeat && event.key.key == SDLK_RETURN &&
                          (event.key.mod & SDL_KMOD_ALT))
                     pcs_toggle_fullscreen();
                 break;

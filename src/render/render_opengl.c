@@ -1055,7 +1055,7 @@ static void glb_resize(int width, int height) {
 static int s_overlay_drawn;   /* drawn for the frame that read_frame is dumping */
 static void glb_draw_overlay(void) {
     GLint unpack_rl = 0, unpack_al = 4;
-    if (!overlay_is_open()) { overlay_render(); return; }  /* closed: schedule hook only */
+    if (!overlay_wants_draw()) { overlay_render(); return; }  /* nothing visible: schedule hook only */
     glGetIntegerv(GL_UNPACK_ROW_LENGTH, &unpack_rl);
     glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpack_al);
     overlay_render();

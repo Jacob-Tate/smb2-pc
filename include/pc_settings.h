@@ -139,9 +139,6 @@ void pcs_set_update_check(int on);
 void pcs_set_update_last(long long t);
 void pcs_set_update_skip(const char* version);
 
-/* F1 overlay request flag (set by the F1 key / "F1" input-script token). */
-void pc_settings_overlay_request(void);
-int  pc_settings_overlay_take_request(void);
 
 #ifdef __cplusplus
 }

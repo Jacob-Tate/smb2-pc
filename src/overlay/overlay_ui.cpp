@@ -255,7 +255,7 @@ void build() {
         ImGui::Dummy(ImVec2(0, u * 0.5f));
         section("");
         if (button_row("Close overlay", nullptr,
-                       "Close this window and go back to the game. F2, the Guide button or Back + Start (hold) also close it. "
+                       "Close this window and go back to the game. F1, the Guide button or Back + Start (hold) also close it. "
                        "B only steps back out of a control, so use this row on a gamepad.")) request_close();
     }
     ImGui::EndChild();
@@ -289,7 +289,7 @@ void build() {
         ImVec2 p = ImGui::GetWindowPos();
         ImDrawList* dl = ImGui::GetWindowDrawList();
         dl->AddLine(ImVec2(p.x, p.y + wh - footer_h), ImVec2(p.x + ww, p.y + wh - footer_h), kBorder, 1.0f);
-        const char* hint = "Up/Down: select    Left/Right or A: change    LB/RB: tab    B: back    F2 / Guide: close";
+        const char* hint = "Up/Down: select    Left/Right or A: change    LB/RB: tab    B: back    F1 / Guide: close";
         ImVec2 sz = ImGui::CalcTextSize(hint);
         dl->AddText(ImVec2(p.x + (ww - sz.x) * 0.5f, p.y + wh - footer_h + (footer_h - u) * 0.5f),
                     IM_COL32(0xE0, 0xDB, 0xC8, 150), hint);

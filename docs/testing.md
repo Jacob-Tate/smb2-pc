@@ -28,7 +28,10 @@ roughly 40-60 frames per second here.
 | `--dump-interval N` | write `frame_NNNNN.ppm` when frame is 120 or a multiple of N |
 | `--dump-from N` | dump every frame from N on |
 | `--dump-ranges "a-b,c-d"` | dump every frame in the ranges (max 32) |
-| `--overlay-open` / `--overlay-open-frames a-b` | open the ImGui overlay at start / for swapped frames a..b-1 (GL and D3D12; frame dumps include it; F2 toggles by hand) |
+| `--overlay-open` / `--overlay-open-frames a-b` | open the ImGui overlay at start / for swapped frames a..b-1 (GL and D3D12; frame dumps include it; F1 toggles by hand, F2 is an alias) |
+| `--overlay-test-set key=value` | (repeatable) apply a setting through the overlay's setters once the renderer exists: `display resolution vsync fps msaa renderer aspect volume buttons language show_fps` (order matters: `resolution` before `display=borderless`), or `tab=<Video\|Audio\|Input\|Game\|Online\|Interface>` to pick the tab shown. `show_fps=2` draws the FPS counter (0 off, 1 TL, 2 TR, 3 BL, 4 BR) |
+| `--overlay-test-toast FRAME:type:Title:Body` | (repeatable, max 4) fire a toast (type `info\|success\|warning\|error`) when swapped frame FRAME is reached; the body may contain `:` |
+| `--overlay-test-online` | force `netplay_active()` = 1: the overlay does not pause the game and local pads still read neutral (tests the chord and the input gate) |
 | `--trace-frame N` | GL call trace of frame N on stderr |
 | `--renderer gl\|d3d12`, `--width/--height`, `--msaa`, `--fps`, `--no-vsync`, `--language`, `--button-style`, `--perf`, `--audio-wav f` | as in `--help` |
 
@@ -66,7 +69,8 @@ Scripts act on **player 1** (port 1, which is always connected).
 * Analog triggers: `TL TR` (full), `TLnnn TRnnn` (0-255), `ROW`/`ROWnn` (alternate L/R pulls
   every nn frames, Monkey Boat paddling).
 * `AUTO`: closed-loop steering of ball 0 toward the stage origin while in main mode 2.
-* Overlay hotkeys: `F1`, `ESC`, `STK`, `UPD`, `MC`.
+* Hotkeys: `F1` (toggles the ImGui overlay; once it is open offline the game is paused, so the script stops advancing), `ESC`, `STK`, `UPD`, `MC`. Virtual pad buttons are SDL3 gamepad indices (`VB4` Back, `VB6` Start, `VB5` Guide, `VB0` A): `100:VADDX,200-270:VB4,200-270:VB6` with `--overlay-test-online` opens the overlay with the chord. Plugging a virtual pad in or out (`VADDX` / `VDEL`) shows a toast.
+* FPS counter and toasts draw whether or not the overlay is open (`--overlay-test-set show_fps=2`, `--overlay-test-toast`); frame dumps include them. Example: `--overlay-test-set show_fps=2 --overlay-test-toast "290:warning:Title:Body" --dump-ranges 300-301`.
 * **Virtual pads** (SDL virtual joysticks, go through the real pad mapping):
   `VADDX VADDP4 VADDP5 VADDS` plug in an Xbox/PS4/PS5/Switch pad on the first free port
   (with nothing else connected that is port 1!); `VADDX2 VADDP42 VADDP52 VADDS2` do the

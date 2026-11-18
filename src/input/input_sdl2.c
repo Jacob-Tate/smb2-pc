@@ -134,6 +134,7 @@ static void clear_port_status(int port) {
 /* Script token VADD*2: the script's virtual pad skips port 1 (so the
  * keyboard/script keeps player 1 and the virtual pad is player 2). */
 static int s_vpad_skip_port1;
+static int s_announce;   /* D5: toast on connect/disconnect (off while input_init opens the start-up pads) */
 
 void input_on_device_added(unsigned int instance_id) {
     SDL_JoystickID id = (SDL_JoystickID)instance_id;
@@ -187,6 +188,11 @@ void input_on_device_added(unsigned int instance_id) {
            i + 1, pad_name(p), type_name(p->type),
            p->cfg.gate == GCS_GATE_CIRCLE ? "circle" : "octagon", p->cfg.deadzone,
            p->cfg.sensitivity, p->cfg.cal[GCS_MAIN].valid ? ", calibrated" : "");
+    if (s_announce) {
+        char body[96];
+        snprintf(body, sizeof body, "%.60s - player %d", pad_name(p), i + 1);
+        overlay_toast(OVERLAY_TOAST_SUCCESS, "Controller connected", body);
+    }
 }
 
 /* A device went away (SDL instance id): close it and free its port. */
@@ -196,6 +202,11 @@ void input_on_device_removed(unsigned int instance_id) {
         PadPort* p = &s_ports[i];
         if (p->id < 0 || p->id != (int32_t)instance_id) continue;
         printf("[input] port %d: %s disconnected\n", i + 1, pad_name(p));
+        {
+            char body[96];
+            snprintf(body, sizeof body, "%.60s - player %d", pad_name(p), i + 1);
+            overlay_toast(OVERLAY_TOAST_WARNING, "Controller disconnected", body);
+        }
         if (p->gc) SDL_CloseGamepad(p->gc);
         if (p->joy) SDL_CloseJoystick(p->joy);
         memset(p, 0, sizeof *p);
@@ -242,6 +253,7 @@ void input_init(void) {
     SDL_free(ids);
     if (n == 0)
         printf("No gamepads found (keyboard on port 1; pads can be plugged in any time)\n");
+    s_announce = 1;
     s_keyboard_fallback = true;
 
     /* Initialize player pad map */
@@ -524,7 +536,7 @@ typedef struct {
     uint16_t buttons;
     int8_t stickX, stickY;
     int8_t autopilot;
-    int8_t hotkey;         /* F1 token: PC settings overlay toggle */
+    int8_t hotkey;         /* F1 token: ImGui overlay toggle */
     int8_t esc;            /* ESC token: the Esc key (pc_input_esc_pressed) */
     uint8_t trigL, trigR;  /* analog trigger values (TL/TR tokens) */
     int16_t row;           /* ROW token: alternate L/R every `row` frames */
@@ -909,7 +921,6 @@ void process_inputs(void)
                 if (s_script[e].esc && script_frame == s_script[e].start)
                     s_esc_pressed = 1;
                 if (s_script[e].hotkey && script_frame == s_script[e].start) {
-                    extern void pc_settings_overlay_request(void);
                     extern void pc_stick_screen_request(void);
                     extern void pc_update_screen_request(void);
                     if (s_script[e].hotkey == 2) pc_stick_screen_request();
@@ -918,7 +929,7 @@ void process_inputs(void)
                         extern void pc_memcard_screen_request(void);
                         pc_memcard_screen_request();
                     }
-                    else pc_settings_overlay_request();
+                    else overlay_toggle();
                 }
                 if (s_script[e].trigL) tl = s_script[e].trigL;
                 if (s_script[e].trigR) tr = s_script[e].trigR;

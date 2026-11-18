@@ -9,6 +9,9 @@
 #include "backends/imgui_impl_opengl3.h"
 #include "overlay_d3d12.h"
 #include "overlay_ui.h"
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
 #include "pc_settings.h"
 
 extern "C" long g_dbg_frame_counter;   // swapped frames (platform_sdl2.c)
@@ -48,6 +51,95 @@ bool chord_buttons_down() {
     return both;
 }
 
+
+// ---- HUD: FPS counter + toasts (D5).  Drawn on the foreground draw list, so it works
+// with the overlay closed too (an ImGui frame runs whenever something is visible).
+struct Toast { int type; char title[64]; char body[200]; Uint64 t0; Uint64 dur; };
+Toast s_toasts[5];
+int   s_ntoasts;
+struct TestToast { long frame; int type; char title[64]; char body[200]; bool done; };
+TestToast s_test_toasts[4];
+int   s_ntest_toasts;
+constexpr Uint64 kFadeInMs = 200, kFadeOutMs = 400;
+
+void prune_toasts() {
+    const Uint64 now = SDL_GetTicks();
+    int j = 0;
+    for (int i = 0; i < s_ntoasts; i++)
+        if (now - s_toasts[i].t0 < s_toasts[i].dur) s_toasts[j++] = s_toasts[i];
+    s_ntoasts = j;
+}
+
+bool hud_visible() {
+    prune_toasts();
+    return s_ntoasts > 0 || g_pcs.show_fps > 0;
+}
+
+ImU32 with_alpha(ImU32 c, float a) {
+    return (c & 0x00FFFFFFu) | ((ImU32)((float)(c >> 24) * a) << 24);
+}
+
+void draw_hud() {
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImGuiIO& io = ImGui::GetIO();
+    const float u = ImGui::GetFontSize();
+    const float s = u / 20.0f;                       // 1.0 at the base 20 px font
+    const ImU32 kFill = IM_COL32(37, 59, 156, 235);  // partyboard: #253b9c
+    const ImU32 kEdge = IM_COL32(0x00, 0x9d, 0xda, 255);
+    const ImU32 kTxt = IM_COL32(0xE0, 0xDB, 0xC8, 255);
+    const float rounding = 14.0f * s;
+    float fps_bottom_tr = 0;
+    if (g_pcs.show_fps > 0) {
+        char buf[32];
+        snprintf(buf, sizeof buf, "%d FPS", (int)(io.Framerate + 0.5f));
+        const ImVec2 ts = ImGui::CalcTextSize(buf);
+        const float padx = 12 * s, pady = 6 * s, m = 16 * s;
+        const float w = ts.x + padx * 2, h = ts.y + pady * 2;
+        const int c = g_pcs.show_fps;                // 1 TL, 2 TR, 3 BL, 4 BR
+        const float x = (c == 2 || c == 4) ? io.DisplaySize.x - m - w : m;
+        const float y = (c == 3 || c == 4) ? io.DisplaySize.y - m - h : m;
+        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), kFill, rounding * 0.6f);
+        dl->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), kEdge, rounding * 0.6f, 0, 1.0f);
+        dl->AddText(ImVec2(x + padx, y + pady), kTxt, buf);
+        if (c == 2) fps_bottom_tr = y + h;
+    }
+    // toasts: top right, stacked downwards (oldest on top), under the FPS box when that sits there
+    static const ImU32 kType[4] = {                  // info, success, warning, error
+        IM_COL32(0x00, 0xb4, 0xfa, 255), IM_COL32(0x5e, 0xd6, 0x7a, 255),
+        IM_COL32(0xC2, 0xA4, 0x2D, 255), IM_COL32(0xf0, 0x56, 0x6a, 255) };
+    const Uint64 now = SDL_GetTicks();
+    const float tw = u * 18.0f, padx = 24 * s * 0.8f, pady = 16 * s * 0.8f, gap = 10 * s;
+    const float x1 = io.DisplaySize.x - 40 * s, x0 = x1 - tw;
+    float y = (fps_bottom_tr > 0 ? fps_bottom_tr + gap : 40 * s);
+    for (int i = 0; i < s_ntoasts; i++) {
+        const Toast& t = s_toasts[i];
+        const Uint64 age = now - t.t0;
+        float a = 1.0f;
+        if (age < kFadeInMs) a = (float)age / (float)kFadeInMs;
+        else if (t.dur - age < kFadeOutMs) a = (float)(t.dur - age) / (float)kFadeOutMs;
+        if (a <= 0) continue;
+        char head[64];
+        int k = 0;
+        for (; t.title[k] && k < 63; k++) head[k] = (t.title[k] >= 'a' && t.title[k] <= 'z') ? t.title[k] - 32 : t.title[k];
+        head[k] = 0;
+        const float wrap = tw - padx * 2;
+        const ImVec2 hs = ImGui::CalcTextSize(head, nullptr, false, wrap);
+        const ImVec2 bs = t.body[0] ? ImGui::CalcTextSize(t.body, nullptr, false, wrap) : ImVec2(0, 0);
+        const float h = pady * 2 + hs.y + (t.body[0] ? 8 * s + bs.y : 0);
+        const ImU32 col = kType[t.type < 0 || t.type > 3 ? 0 : t.type];
+        const float slide = (1.0f - a) * 12 * s;    // small slide-in / out
+        const ImVec2 p0(x0 + slide, y), p1(x1 + slide, y + h);
+        dl->AddRectFilled(ImVec2(p0.x + 3 * s, p0.y + 4 * s), ImVec2(p1.x + 3 * s, p1.y + 4 * s),
+                          IM_COL32(0, 0, 0, (int)(90 * a)), rounding);   // soft shadow
+        dl->AddRectFilled(p0, p1, with_alpha(kFill, a), rounding);
+        dl->AddRect(p0, p1, with_alpha(t.type == 0 ? kEdge : col, a), rounding, 0, 1.0f);
+        dl->AddText(nullptr, 0.0f, ImVec2(p0.x + padx, p0.y + pady), with_alpha(col, a), head, nullptr, wrap);
+        if (t.body[0])
+            dl->AddText(nullptr, 0.0f, ImVec2(p0.x + padx, p0.y + pady + hs.y + 8 * s), with_alpha(kTxt, a), t.body, nullptr, wrap);
+        y += h + gap;
+    }
+}
+
 void build_ui() {
     if (s_focus_pending) { ImGui::SetNextWindowFocus(); s_focus_pending = false; }
     ovl::build();
@@ -55,6 +147,11 @@ void build_ui() {
 }
 
 void apply_schedule() {
+    for (int i = 0; i < s_ntest_toasts; i++)
+        if (!s_test_toasts[i].done && g_dbg_frame_counter >= s_test_toasts[i].frame) {
+            s_test_toasts[i].done = true;
+            overlay_toast(s_test_toasts[i].type, s_test_toasts[i].title, s_test_toasts[i].body);
+        }
     if (s_open_from >= 0) {
         bool want = g_dbg_frame_counter >= s_open_from && g_dbg_frame_counter < s_open_to;
         if (want != s_open) overlay_set_open(want);
@@ -110,7 +207,7 @@ void overlay_shutdown(void) {
 
 bool overlay_process_event(const SDL_Event* e) {
     if (!e) return false;
-    if (e->type == SDL_EVENT_KEY_DOWN && !e->key.repeat && e->key.key == SDLK_F2) {
+    if (e->type == SDL_EVENT_KEY_DOWN && !e->key.repeat && (e->key.key == SDLK_F1 || e->key.key == SDLK_F2)) {   // F1; F2 stays as an alias
         overlay_toggle();
         return true;
     }
@@ -163,8 +260,13 @@ void overlay_poll_tick(void) {
 }
 
 void overlay_new_frame(void) {
-    if (!s_ready || !s_open || s_frame_started) return;
+    if (!s_ready || s_frame_started) return;
+    if (!s_open && !hud_visible()) return;   // nothing to draw: no ImGui frame at all
     if (s_kind == OVERLAY_RENDERER_GL) ImGui_ImplOpenGL3_NewFrame(); else overlay_d3d12_new_frame();
+    {   // closed: the SDL backend must not touch the mouse cursor (overlay_poll_tick hides it when idle)
+        ImGuiIO& cio = ImGui::GetIO();
+        if (s_open) cio.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange; else cio.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    }
     ImGui_ImplSDL3_NewFrame();
     if (s_kind == OVERLAY_RENDERER_D3D12) {   // the DX12 backend draws in DisplaySize units = pixels
         ImGuiIO& io = ImGui::GetIO();
@@ -173,13 +275,15 @@ void overlay_new_frame(void) {
     }
     ImGui::NewFrame();
     s_frame_started = true;
-    build_ui();
+    ImGui::GetIO().FontGlobalScale = ovl::scale_for(ImGui::GetIO().DisplaySize.y);
+    if (s_open) build_ui();
+    draw_hud();
 }
 
 void overlay_render(void) {
     apply_schedule();
     if (!s_ready) return;
-    if (!s_open) {
+    if (!s_open && !hud_visible()) {
         if (s_frame_started) { ImGui::EndFrame(); s_frame_started = false; }
         return;
     }
@@ -192,6 +296,44 @@ void overlay_render(void) {
 }
 
 bool overlay_is_open(void) { return s_open; }
+
+// open, or an FPS counter / toast is on screen: the renderers must run the overlay draw path
+bool overlay_wants_draw(void) { return s_ready && (s_open || hud_visible()); }
+
+void overlay_toast(int type, const char* title, const char* body) {
+    if (!s_ready) return;
+    if (s_ntoasts == (int)(sizeof s_toasts / sizeof s_toasts[0])) {   // full: drop the oldest
+        memmove(s_toasts, s_toasts + 1, sizeof s_toasts - sizeof s_toasts[0]);
+        s_ntoasts--;
+    }
+    Toast& t = s_toasts[s_ntoasts++];
+    t.type = type;
+    snprintf(t.title, sizeof t.title, "%s", title ? title : "");
+    snprintf(t.body, sizeof t.body, "%s", body ? body : "");
+    t.t0 = SDL_GetTicks();
+    t.dur = 4000 + (Uint64)strlen(t.body) * 30;
+    printf("[overlay] toast (%d): %s - %s\n", type, t.title, t.body);
+    fflush(stdout);
+}
+
+// "FRAME:type:Title:Body" (type 0..3 or info/success/warning/error)
+void overlay_test_toast(const char* spec) {
+    if (s_ntest_toasts >= 4) return;
+    TestToast& t = s_test_toasts[s_ntest_toasts];
+    char ty[16] = "";
+    char title[64] = "", body[200] = "";
+    long fr = 0;
+    int n = 0;
+    if (sscanf(spec, "%ld:%15[^:]:%63[^:]:%n", &fr, ty, title, &n) < 3) return;
+    snprintf(body, sizeof body, "%s", spec + n);
+    t.frame = fr;
+    t.type = !strcmp(ty, "success") ? OVERLAY_TOAST_SUCCESS : !strcmp(ty, "warning") ? OVERLAY_TOAST_WARNING
+           : !strcmp(ty, "error") ? OVERLAY_TOAST_ERROR : OVERLAY_TOAST_INFO;
+    snprintf(t.title, sizeof t.title, "%s", title);
+    snprintf(t.body, sizeof t.body, "%s", body);
+    t.done = false;
+    s_ntest_toasts++;
+}
 
 void overlay_set_open(bool open) {
     if (open && !s_ready) return;
