@@ -16,6 +16,7 @@
 #include "netplay/session.h"
 #include "netplay/inputsync.h"
 #include "netplay/checksum.h"
+#include "netplay/netplay.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,6 +67,7 @@ static const char* g_replay_arg = NULL;       /* --replay <file> (E3) */
 static const char* g_checksum_log_arg = NULL; /* --checksum-log <file> (E3) */
 static long g_max_frames_arg = 0;             /* --max-frames <n>: stop after n input polls (E3) */
 static int g_checksum_ring_arg = 0;           /* --checksum-ring */
+static NetplayOptions g_net_opt = { NULL, NULL, 0, NULL, -1, 0, NULL, 0 };  /* --server ... (E6) */
 
 /* Forward declarations from decompiled game (weak stubs for standalone build) */
 #if !defined(SMB2_LINK_GAME)
@@ -250,6 +252,22 @@ int main(int argc, char* argv[]) {
             g_checksum_log_arg = argv[++i];
         } else if (strcmp(argv[i], "--max-frames") == 0 && i + 1 < argc) {
             g_max_frames_arg = atol(argv[++i]);
+        } else if (strcmp(argv[i], "--server") == 0 && i + 1 < argc) {
+            g_net_opt.server = argv[++i];
+        } else if (strcmp(argv[i], "--create") == 0) {
+            g_net_opt.create = 1;
+        } else if (strcmp(argv[i], "--join") == 0 && i + 1 < argc) {
+            g_net_opt.join_code = argv[++i];
+        } else if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) {
+            g_net_opt.name = argv[++i];
+        } else if (strcmp(argv[i], "--delay") == 0 && i + 1 < argc) {
+            g_net_opt.delay = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--players") == 0 && i + 1 < argc) {
+            g_net_opt.players = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--room-code-file") == 0 && i + 1 < argc) {
+            g_net_opt.code_file = argv[++i];
+        } else if (strcmp(argv[i], "--lobby-timeout") == 0 && i + 1 < argc) {
+            g_net_opt.lobby_timeout_s = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--checksum-ring") == 0) {
             g_checksum_ring_arg = 1;
         } else if (strcmp(argv[i], "--session-epoch") == 0 && i + 1 < argc) {
@@ -312,6 +330,11 @@ int main(int argc, char* argv[]) {
                    "  --max-frames <n>  Exit(0) after n input polls (one per game frame; unlike\n"
                    "                    --exit-frame, which counts presented frames)\n"
                    "  --checksum-ring   Hash every poll into a 600-entry ring (desync bisecting)\n");
+            printf("  --server <host[:port]> Online play (lockstep via the relay server, default port 7855):\n"
+                   "                    with --create (host) or --join <CODE>; --name <n>, --delay <polls>\n"
+                   "                    (host, default 2), --players <n> (host starts when n are in,\n"
+                   "                    default 2), --room-code-file <f>, --lobby-timeout <s>.\n"
+                   "                    Implies --det-session; --record/--checksum-log/--max-frames work.\n");
             printf("  --list-controllers Print every joystick / gamepad SDL sees (name, VID/PID,\n"
                    "                    GUID, mapping), wait 1 s for late devices, then exit\n");
             printf("  --perf            Print frame timing / GL counters every 300 frames\n");
@@ -330,6 +353,20 @@ int main(int argc, char* argv[]) {
         if (!inputsync_open_replay(g_replay_arg, &rc))
             return 1;
         g_session_cfg = rc;
+        g_session_epoch_given = g_session_locale_given = 0;
+        g_det_session_arg = 2;   /* config already set */
+    }
+    if (g_net_opt.server) {
+        /* online (E6): the lobby decides the session config (epoch chosen by the server) */
+        SessionConfig nc;
+        if (g_replay_arg) {
+            fprintf(stderr, "--server and --replay cannot be combined\n");
+            return 1;
+        }
+        netplay_set_options(&g_net_opt);
+        if (!netplay_lobby_run(&nc))
+            return 1;
+        g_session_cfg = nc;
         g_session_epoch_given = g_session_locale_given = 0;
         g_det_session_arg = 2;   /* config already set */
     }
@@ -355,6 +392,8 @@ int main(int argc, char* argv[]) {
         if (g_record_arg && !inputsync_open_record(g_record_arg))
             return 1;
         checksum_open_log(g_checksum_log_arg);
+        if (g_net_opt.server && !netplay_begin())
+            return 1;
         checksum_enable_ring(g_checksum_ring_arg);
         if (g_max_frames_arg > 0)
             inputsync_set_max_polls((uint64_t)g_max_frames_arg);

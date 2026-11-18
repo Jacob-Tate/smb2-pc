@@ -128,7 +128,8 @@ void inputsync_set_netplay(InputSyncNetFn fn, void *user)
 {
     s_net_fn = fn;
     s_net_user = user;
-    if (fn && s_src == INPUTSYNC_LIVE)
+    /* --record keeps recording the exchanged bundle (all 4 ports) while netplay runs */
+    if (fn && (s_src == INPUTSYNC_LIVE || s_src == INPUTSYNC_RECORD))
         s_src = INPUTSYNC_NETPLAY;
     else if (!fn && s_src == INPUTSYNC_NETPLAY)
         s_src = INPUTSYNC_LIVE;
@@ -181,6 +182,16 @@ void inputsync_exchange(const SmbNetPad local[INPUTSYNC_PORTS], SmbNetPad out[IN
     case INPUTSYNC_NETPLAY:
         if (!s_net_fn || s_net_fn((uint32_t)p, local, out, s_net_user) != 0)
             finish("netplay aborted");
+        if (s_rec) {   /* --record with netplay: the bundle everyone played */
+            uint8_t buf[REC_POLL_SIZE];
+            SmbNetWriter w;
+            smbw_init(&w, buf, sizeof buf);
+            for (i = 0; i < INPUTSYNC_PORTS; i++)
+                smbw_pad(&w, &out[i]);
+            fwrite(buf, 1, sizeof buf, s_rec);
+            if (p % 60 == 0)
+                fflush(s_rec);
+        }
         break;
     default:
         if (out != local)

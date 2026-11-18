@@ -150,6 +150,7 @@ set(SOURCES
     src/netplay/session.c
     src/netplay/inputsync.c
     src/netplay/checksum.c
+    src/netplay/netplay.c
     src/main/main.c
 )
 
@@ -214,6 +215,27 @@ target_link_libraries(smb2_pc_port smb2_overlay)
 add_library(smb2_zstd STATIC ${CMAKE_SOURCE_DIR}/third_party/zstd/zstddeclib.c)
 target_compile_options(smb2_zstd PRIVATE -w)
 target_link_libraries(smb2_pc_port smb2_zstd)
+
+# ENet 1.3.18 (MIT, third_party/enet) for the netplay client (src/netplay/netplay.c)
+if(WIN32)
+    set(SMB2_ENET_OS third_party/enet/win32.c)
+else()
+    set(SMB2_ENET_OS third_party/enet/unix.c)
+endif()
+add_library(smb2_enet STATIC
+    third_party/enet/callbacks.c third_party/enet/compress.c third_party/enet/host.c
+    third_party/enet/list.c third_party/enet/packet.c third_party/enet/peer.c
+    third_party/enet/protocol.c ${SMB2_ENET_OS})
+target_include_directories(smb2_enet PUBLIC ${CMAKE_SOURCE_DIR}/third_party/enet/include)
+target_compile_options(smb2_enet PRIVATE -w)
+if(NOT WIN32)
+    target_compile_definitions(smb2_enet PRIVATE HAS_FCNTL=1 HAS_POLL=1 HAS_GETNAMEINFO=1 HAS_GETADDRINFO=1
+        HAS_GETHOSTBYNAME_R=1 HAS_GETHOSTBYADDR_R=1 HAS_INET_PTON=1 HAS_INET_NTOP=1 HAS_MSGHDR_FLAGS=1 HAS_SOCKLEN_T=1)
+endif()
+target_link_libraries(smb2_pc_port smb2_enet)
+if(WIN32)
+    target_link_libraries(smb2_pc_port ws2_32 winmm)
+endif()
 
 # Build id (F2): custom target re-runs every build, build_id_gen.h only changes
 # when HEAD / dirtiness changes, so only build_id.c recompiles.
