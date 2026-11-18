@@ -202,6 +202,11 @@ void input_on_device_removed(unsigned int instance_id) {
         PadPort* p = &s_ports[i];
         if (p->id < 0 || p->id != (int32_t)instance_id) continue;
         printf("[input] port %d: %s disconnected\n", i + 1, pad_name(p));
+        {
+            char body[96];
+            snprintf(body, sizeof body, "%.60s - player %d", pad_name(p), i + 1);
+            overlay_toast(OVERLAY_TOAST_WARNING, "Controller disconnected", body);
+        }
         if (p->gc) SDL_CloseGamepad(p->gc);
         if (p->joy) SDL_CloseJoystick(p->joy);
         memset(p, 0, sizeof *p);

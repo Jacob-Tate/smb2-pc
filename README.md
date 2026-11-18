@@ -88,9 +88,9 @@ is GameCube A); Nintendo pads are mapped by label, as in Nintendo's own ports.
 | C Stick | right stick | right stick | right stick | - |
 | +Control Pad | d-pad | d-pad | d-pad | arrow keys |
 
-- **Alt+Enter** toggles fullscreen (the game starts windowed; an existing settings file is kept), **F1** opens the PC settings overlay.
+- **Alt+Enter** toggles fullscreen (the game starts windowed; an existing settings file is kept), **F1** (or the controller chord: hold **Back + Start** for half a second, or press the **Guide** button) opens the in-game overlay with all PC settings (video, audio, input, game, online, interface); F1 / Guide / the chord close it. The game pauses while it is open (offline). A small FPS counter can be shown in any corner (overlay > Video > Show FPS), and pop-up toasts announce things like controllers being plugged in or out.
 - Quit to Desktop: B (or Esc) on the title screen, X (or Esc) on Mode Select,
-  the pause menu, Options > Game Screen or the F1 overlay.
+  the pause menu, Options > Game Screen or the overlay (Interface tab).
 - The triggers give the analog L/R value and, past 85 % of their travel, the
   digital click, like a GameCube trigger. LB / L1 / L is unused.
 - Pads can be plugged in and out at any time; a new pad takes the first free
@@ -102,7 +102,7 @@ is GameCube A); Nintendo pads are mapped by label, as in Nintendo's own ports.
 
 In game: Options > Game Screen (resolution, fullscreen, aspect, frame rate,
 vsync, MSAA, renderer, language, button prompts, volume, controllers,
-updates, memory card) or the F1 overlay, which also shows the version. The Updates row
+updates, memory card) or the F1 overlay (same settings; also shows the version). The Updates row
 opens a screen with "Check automatically" (On by default; at most once a
 day, only the version number is sent) and "Check now".
 They are stored in `settings.dat`. Command-line options override them for one
@@ -139,7 +139,7 @@ be used.
    - **A real memory card**: dump it with the GCMM homebrew on a softmodded Wii
      or GameCube, either the whole card (`.raw`) or the single save (`.gci`).
 2. Import it, any of:
-   - In game: Options > Game Screen > Memory card (or F1 > Memory card) >
+   - In game: Options > Game Screen > Memory card (or F1 > Game > Memory card screen) >
      Import a save..., pick the file. Allowed on the title screen and in the
      menus. If you already have a save, the game asks before replacing it and
      keeps a copy in `memcard\backup\`. The game then closes; start it again
