@@ -149,7 +149,6 @@ set(SOURCES
     src/platform/pc_file_dialog.c
     src/netplay/session.c
     src/netplay/inputsync.c
-    src/netplay/netplay_active.c
     src/netplay/checksum.c
     src/netplay/netplay.c
     src/main/main.c

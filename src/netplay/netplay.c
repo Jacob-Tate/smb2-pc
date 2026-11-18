@@ -3,6 +3,7 @@
  * blocking pad read that pumps the network).  All state is on the main thread:
  * the SDL event watch only runs there too (checked), so no locking. */
 #include "netplay/netplay.h"
+#include "netplay/netplay_active.h"
 #include "netplay/inputsync.h"
 #include "netplay/checksum.h"
 #include "netplay/protocol.h"
@@ -280,7 +281,10 @@ void netplay_set_options(const NetplayOptions *opt)
 }
 
 int netplay_requested(void) { return s_requested; }
-int netplay_active(void) { return s_active; }
+/* --overlay-test-online (D3): pretend a session runs so the overlay acts online, no network. */
+static int s_test_forced;
+void netplay_test_force_active(int on) { s_test_forced = on; }
+int netplay_active(void) { return s_active || s_test_forced; }
 int netplay_input_delay(void) { return s_active ? s_game_cfg.inputDelay : 0; }
 
 void netplay_shutdown(void)
