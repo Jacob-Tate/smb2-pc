@@ -73,6 +73,8 @@ static const char* g_lobby_script_arg = NULL;  /* --lobby-test-script (E8) */
 static const char* g_np_resume_arg = NULL;      /* --np-resume CODE,ID,TOKEN: restarted into a session (E8) */
 static const char* g_np_notice_arg = NULL;      /* --np-notice <text>: toast after a restart */
 static unsigned long g_np_wait_pid_arg = 0;     /* --np-wait-pid: wait for the old process */
+static int g_np_lobby_arg = 0;                  /* --np-lobby: restarted back into the room's lobby after a session (E9) */
+static const char* g_np_lobby_server = NULL;
 
 /* Forward declarations from decompiled game (weak stubs for standalone build) */
 #if !defined(SMB2_LINK_GAME)
@@ -285,6 +287,12 @@ int main(int argc, char* argv[]) {
             g_np_notice_arg = argv[++i];
         } else if (strcmp(argv[i], "--np-wait-pid") == 0 && i + 1 < argc) {
             g_np_wait_pid_arg = strtoul(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--np-lobby") == 0) {
+            g_np_lobby_arg = 1;
+        } else if (strcmp(argv[i], "--np-lobby-return") == 0) {
+            netplay_set_test_lobby_return(1);   /* test: go back to the lobby even in automated runs */
+        } else if (strcmp(argv[i], "--np-return-script") == 0 && i + 1 < argc) {
+            netplay_set_return_script(argv[++i]);   /* test: --lobby-test-script of the process that returns to the lobby */
         } else if (strcmp(argv[i], "--np-exit-file") == 0 && i + 1 < argc) {
             netplay_set_exit_file(argv[++i]);
         } else if (strcmp(argv[i], "--checksum-ring") == 0) {
@@ -388,6 +396,14 @@ int main(int argc, char* argv[]) {
     if (g_np_resume_arg && !netplay_set_resume(g_np_resume_arg)) {
         fprintf(stderr, "bad --np-resume (expected CODE,ID,TOKEN)\n");
         return 1;
+    }
+    if (g_np_lobby_arg) {   /* restarted back to the lobby: not a session; reconnect once the game data is known */
+        g_np_lobby_server = g_net_opt.server;
+        g_net_opt.server = NULL;
+        if (!g_np_lobby_server || !g_np_resume_arg) {
+            fprintf(stderr, "--np-lobby needs --server and --np-resume\n");
+            return 1;
+        }
     }
     if (g_lobby_script_arg) {
         if (!netplay_set_lobby_script(g_lobby_script_arg)) {
@@ -535,6 +551,9 @@ int main(int argc, char* argv[]) {
         pc_user_msg("No game data - exiting.\n");
         return 1;
     }
+
+    if (g_np_lobby_server)
+        netplay_lobby_return(g_np_lobby_server, g_net_opt.name);   /* non-blocking: the frame loop finishes it */
 
     if (g_net_opt.server) {
         /* online: lobby (command line) or seat takeover after the restart (E8).  Needs the disc identity, so it

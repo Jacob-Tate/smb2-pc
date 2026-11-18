@@ -47,6 +47,7 @@ extern "C" {
 #define SMB_NET_LATE_MS 20            /* server: lateness beyond a client's usual that counts as "late" */
 #define SMB_NET_CLIENT_ID_NONE 0xFF
 #define SMB_CAP_RESUME 0x01           /* server understands RELAUNCHING / RESUME */
+#define SMB_CAP_LOBBY_RESUME 0x02     /* E9: RELAUNCHING / RESUME also work in the lobby phase ("back to the lobby" after a game) */
 #define SMB_NET_RESUME_GRACE_MS 90000 /* a relaunching member has this long to come back */
 
 /* Compile-time size check usable from C99 and C++. */

@@ -290,7 +290,7 @@ void sendWelcome(Client &c) {
     smbw_init(&w, buf, sizeof(buf));
     smbw_u8(&w, SMB_MSG_WELCOME);
     smbw_u8(&w, c.id);
-    smbw_u8(&w, SMB_CAP_RESUME); // trailing capability byte (older clients ignore it)
+    smbw_u8(&w, SMB_CAP_RESUME | SMB_CAP_LOBBY_RESUME); // trailing capability byte (older clients ignore it)
     send(c, SMB_NET_CHANNEL_CONTROL, w);
 }
 
@@ -419,6 +419,14 @@ void onStartGame(Client &c, SmbNetReader &r) {
         return sendError(c, SMB_ERR_CONFIG_MISMATCH, msg);
     }
     if (!smb_config_valid(&cfg)) return sendError(c, SMB_ERR_BAD_SETTINGS, "invalid session settings");
+    for (uint8_t id : room->members) { // E9: members restarting back into the lobby must be back first
+        const Client &m = *gClients.at(id);
+        if (m.away || m.relaunching) {
+            char msg[120];
+            std::snprintf(msg, sizeof(msg), "waiting for %s to come back to the room", m.name.c_str());
+            return sendError(c, SMB_ERR_BAD_SETTINGS, msg);
+        }
+    }
     startGame(*room, cfg);
 }
 
@@ -523,7 +531,7 @@ void onEndGame(Client &c) {
 void onRelaunching(Client &c, SmbNetReader &r) {
     const uint32_t token = smbr_u32(&r);
     if (r.error) return sendError(c, SMB_ERR_BAD_MESSAGE, "malformed RELAUNCHING");
-    if (!c.room || !c.room->inGame) return; // only meaningful after GAME_START
+    if (!c.room) return; // in a game (E8: after GAME_START) or, E9, after it ended (the room's lobby phase)
     c.relaunching = true;
     c.token = token;
     logf("room %s: %s is restarting for the session", c.room->code.c_str(), c.name.c_str());
@@ -539,7 +547,7 @@ void onResume(Client &c, SmbNetReader &r) {
     if (r.error) return sendError(c, SMB_ERR_BAD_MESSAGE, "malformed RESUME");
     const auto room = gRooms.find(code);
     const auto old = gClients.find(oldId);
-    if (room == gRooms.end() || !room->second->inGame || old == gClients.end() || old->second.get() == &c ||
+    if (room == gRooms.end() || old == gClients.end() || old->second.get() == &c ||
         old->second->room != room->second.get() || !old->second->relaunching || old->second->token != token) {
         return sendError(c, SMB_ERR_NO_SUCH_ROOM, "can't resume: the game is gone, or the seat was given up");
     }
@@ -558,7 +566,7 @@ void onResume(Client &c, SmbNetReader &r) {
     logf("room %s: %s is back (client %u)", rm.code.c_str(), o.name.c_str(), o.id);
     sendWelcome(o);
     sendRoomState(rm);
-    sendGameStart(rm, &o);
+    if (rm.inGame) sendGameStart(rm, &o); // E9: back in the lobby after a game: ROOM_STATE alone
     gClients.erase(c.id); // c is gone: the caller must not touch it
 }
 
@@ -722,8 +730,8 @@ int main(int argc, char **argv) {
             }
             case ENET_EVENT_TYPE_DISCONNECT: {
                 if (auto *c = static_cast<Client *>(event.peer->data)) {
-                    if (c->relaunching && c->room && c->room->inGame) {
-                        // E8: it is restarting for the session; keep the seat until RESUME or the grace runs out
+                    if (c->relaunching && c->room) {
+                        // E8/E9: it is restarting (into the session, or back to the lobby after one); keep the seat until RESUME or the grace runs out
                         c->away = true;
                         c->peer = nullptr;
                         c->awayUntilMs = enet_time_get() + SMB_NET_RESUME_GRACE_MS;

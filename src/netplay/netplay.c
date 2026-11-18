@@ -120,6 +120,17 @@ static uint32_t s_resume_token;
 static int s_resumed;               /* a resumed session is (or was) running in this process */
 static int s_automated;
 static const char *s_exit_file;
+static int s_test_return;           /* --np-lobby-return: test, go back to the lobby even in automated runs */
+static char s_return_script[512];   /* --np-return-script: lobby test script of the process that returns to the lobby */
+
+/* E9 test hooks (environment, read once in netplay_begin; they only change what THIS client does on the wire) */
+static long s_hook_drop = -1;       /* SMB_NETPLAY_TEST_DROP=<poll>[:quit|:leave]: die at that poll (hard kill by default) */
+static int s_hook_drop_mode;        /* 0 = hard kill (no goodbye), 1 = quit (pc_quit_request: the pause menu's Quit to Desktop), 2 = leave (LEAVE_ROOM + exit) */
+static long s_hook_desync = -1;     /* SMB_NETPLAY_TEST_DESYNC=<poll>: from the first checksum at/after it, send a wrong hash */
+static long s_hook_stall = -1;      /* SMB_NETPLAY_TEST_STALL=<poll>:<ms>[:net]: sleep in the main loop at that poll */
+static long s_hook_stall_ms;
+static int s_hook_stall_net;        /* 1 = keep servicing ENet while stalled (connection stays up) */
+static long s_hook_endgame = -1;    /* SMB_NETPLAY_TEST_ENDGAME=<poll>: the host sends END_GAME at that poll */
 
 /* toast queue */
 static NetplayEvent s_events[EVENT_RING];
@@ -134,7 +145,7 @@ static uint32_t s_watch_last_ms;
 static int s_watch_added;
 
 static void lobby_close(void);
-static void session_end(int code, const char *why);
+static void session_end(int code, const char *why, int room_alive);
 
 /* ---------------------------------------------------------------- events */
 
@@ -352,8 +363,18 @@ static void handle_packet(const uint8_t *data, size_t size)
         uint8_t ports = smbr_u8(&r);
         uint32_t poll = smbr_u32(&r);
         if (!r.error) {
-            printf("[netplay] player '%s' dropped (ports %02x) from poll %u\n", client_name(id), ports, (unsigned)poll);
+            char who[SMB_NET_MAX_NAME + 8] = "", t[96];
+            int port;
+            for (port = 0; port < SMB_NET_MAX_PLAYERS; port++)
+                if ((ports & (1 << port)) && s_port_names[port][0]) {
+                    snprintf(who, sizeof who, "%s", s_port_names[port]);
+                    break;
+                }
+            if (!who[0]) snprintf(who, sizeof who, "%s", client_name(id));
+            printf("[netplay] player '%s' dropped (ports %02x) from poll %u\n", who, ports, (unsigned)poll);
             fflush(stdout);
+            snprintf(t, sizeof t, "%s left the game", who);
+            netplay_push_notice(NP_EV_INFO, t);
         }
         break;
     }
@@ -767,11 +788,11 @@ int netplay_lobby_room(NetplayRoomInfo *out)
 #ifdef _WIN32
 static const char *const k_strip_value[] = { "--server", "--join", "--players", "--delay", "--name", "--room-code-file",
     "--lobby-timeout", "--lobby-test-script", "--np-resume", "--np-notice", "--np-wait-pid" };
-static const char *const k_strip_flag[] = { "--create" };
+static const char *const k_strip_flag[] = { "--create", "--np-lobby" };
 /* dropped when going back to offline play (a session's own test/recording flags) */
 static const char *const k_strip_session_value[] = { "--np-exit-file", "--record", "--replay", "--checksum-log",
-    "--max-frames", "--input-script", "--session-epoch", "--session-locale" };
-static const char *const k_strip_session_flag[] = { "--det-session", "--checksum-ring" };
+    "--max-frames", "--input-script", "--session-epoch", "--session-locale", "--np-return-script" };
+static const char *const k_strip_session_flag[] = { "--det-session", "--checksum-ring", "--np-lobby-return" };
 
 static int in_list(const char *s, const char *const *list, int n)
 {
@@ -877,27 +898,23 @@ static uint32_t make_token(void)
     return x ? x : 1;
 }
 
-/* GAME_START arrived in the running game: restart into the session. */
-static void begin_relaunch(void)
+/* Restarts the program and hands our seat to the new process: tells the server (RELAUNCHING + token, so the
+ * disconnect is not a drop and the seat is held for SMB_NET_RESUME_GRACE_MS), starts the new process with
+ * --np-resume CODE,ID,TOKEN, and closes the connection politely once RELAUNCHING is acknowledged.
+ *   to_session: new process = the online session (E8)        else: new process = offline game back in the lobby
+ *   (E9, --np-lobby): reconnects, RESUMEs into the room's lobby phase.
+ * `notice` (may be NULL) becomes a toast in the new process.  Returns 1 if the new process was started (the caller
+ * then quits); 0 = nothing changed except that the server was told we are restarting (callers drop the connection). */
+static int hand_over(int to_session, const char *notice)
 {
     char pid[32], resume[64], client_name_arg[SMB_NET_MAX_NAME + 1];
-    const char *args[12];
-    int n = 0, ok;
+    const char *args[16];
+    int n = 0, ok, i;
     uint32_t token = make_token();
     uint8_t buf[8];
     SmbNetWriter w;
     ENetEvent ev;
-    int i;
 
-    if (!netplay_lobby_server_can_start()) {
-        netplay_push_notice(NP_EV_ERROR, "This server can't restart the game into a session (update the server)");
-        netplay_lobby_leave();
-        s_game_started = 0;
-        return;
-    }
-    printf("[netplay] GAME_START received in the running game: restarting into the session\n");
-    fflush(stdout);
-    /* tell the server we will be back, make sure it got that, then close */
     smbw_init(&w, buf, sizeof buf);
     smbw_u8(&w, SMB_MSG_RELAUNCHING);
     smbw_u32(&w, token);
@@ -918,13 +935,19 @@ static void begin_relaunch(void)
     args[n++] = resume;
     args[n++] = "--np-wait-pid";
     args[n++] = pid;
-    ok = spawn_self(0, args, n);
-    if (!ok) {
-        netplay_push_notice(NP_EV_ERROR, "Couldn't restart the game for the online session");
-        netplay_lobby_disconnect();   /* the server counts us as dropped */
-        s_game_started = 0;
-        return;
+    if (!to_session) {
+        args[n++] = "--np-lobby";
+        if (s_return_script[0]) {
+            args[n++] = "--lobby-test-script";
+            args[n++] = s_return_script;
+        }
     }
+    if (notice && notice[0]) {
+        args[n++] = "--np-notice";
+        args[n++] = notice;
+    }
+    ok = spawn_self(!to_session, args, n);
+    if (!ok) return 0;
     s_state = NP_LOBBY_STARTING;
     /* delivered + acknowledged before the disconnect (a plain disconnect can drop the RELAUNCHING) */
     if (s_peer) enet_peer_disconnect_later(s_peer, 0);
@@ -939,12 +962,32 @@ static void begin_relaunch(void)
         lobby_close();
         s_state = keep;
     }
+    return 1;
+}
+
+/* GAME_START arrived in the running game: restart into the session. */
+static void begin_relaunch(void)
+{
+    if (!netplay_lobby_server_can_start()) {
+        netplay_push_notice(NP_EV_ERROR, "This server can't restart the game into a session (update the server)");
+        netplay_lobby_leave();
+        s_game_started = 0;
+        return;
+    }
+    printf("[netplay] GAME_START received in the running game: restarting into the session\n");
+    fflush(stdout);
+    if (!hand_over(1, NULL)) {
+        netplay_push_notice(NP_EV_ERROR, "Couldn't restart the game for the online session");
+        netplay_lobby_disconnect();   /* the server counts us as dropped */
+        s_game_started = 0;
+        return;
+    }
     pc_quit_request("online game starting");
 }
 
 /* ------------------------------------------------------- lobby test script */
 
-enum { ST_CONNECT, ST_CREATE, ST_JOIN, ST_CODEFILE, ST_START, ST_PORT };
+enum { ST_CONNECT, ST_CREATE, ST_JOIN, ST_CODEFILE, ST_START, ST_PORT, ST_REPORT, ST_EXIT };
 typedef struct ScriptStep { long frame; int kind; char arg[400]; } ScriptStep;
 static ScriptStep s_script[24];
 static int s_script_n, s_script_pos;
@@ -958,7 +1001,7 @@ int netplay_set_lobby_script(const char *spec)
 {
     static char copy[2048];
     char *p, *save;
-    static const char *const names[] = { "connect", "create", "join", "codefile", "start", "port" };
+    static const char *const names[] = { "connect", "create", "join", "codefile", "start", "port", "report", "exit" };
     snprintf(copy, sizeof copy, "%s", spec);
     s_script_n = s_script_pos = 0;
     for (p = strtok_r(copy, ",", &save); p && s_script_n < 24; p = strtok_r(NULL, ",", &save)) {
@@ -972,7 +1015,7 @@ int netplay_set_lobby_script(const char *spec)
         eq = strchr(p, '=');
         if (eq) *eq++ = 0;
         st->kind = -1;
-        for (k = 0; k < 6; k++) if (strcmp(p, names[k]) == 0) st->kind = k;
+        for (k = 0; k < 8; k++) if (strcmp(p, names[k]) == 0) st->kind = k;
         if (st->kind < 0) return 0;
         snprintf(st->arg, sizeof st->arg, "%s", eq ? eq : "");
         s_script_n++;
@@ -1030,6 +1073,28 @@ static void run_script(void)
             if (!in_room) return;
             netplay_lobby_set_port(atoi(st->arg));
             break;
+        case ST_REPORT: {   /* E9: write the lobby state (room kept?) to a file; waits until in a room */
+            FILE *f;
+            int k;
+            if (!in_room) return;
+            f = fopen(st->arg, "wb");
+            if (f) {
+                fprintf(f, "room=%s\ncount=%d\nhost=%d\nself=%d\nself_is_host=%d\nphase=lobby\nnames=", ri.code, ri.count,
+                        ri.host_id, ri.self_id, ri.self_is_host);
+                for (k = 0; k < ri.count; k++) fprintf(f, "%s%s", k ? "," : "", ri.players[k].name);
+                fprintf(f, "\n");
+                fclose(f);
+            } else {
+                fprintf(stderr, "[netplay] cannot write %s\n", st->arg);
+            }
+            printf("[netplay] lobby report written: room %s, %d players\n", ri.code, ri.count);
+            fflush(stdout);
+            break;
+        }
+        case ST_EXIT:
+            printf("[netplay] lobby test script: exit\n");
+            fflush(NULL);
+            exit(0);
         }
         s_script_pos++;
     }
@@ -1044,7 +1109,7 @@ void netplay_lobby_tick(void)
     if (s_enet && s_state != NP_LOBBY_STARTING) {
         net_service(0);
         now = enet_time_get();
-        if (s_disconnected && s_state != NP_LOBBY_RESUMING) {
+        if (s_disconnected && (s_state != NP_LOBBY_RESUMING || s_blocking == 3)) {
             netplay_push_notice(NP_EV_ERROR, "Lost the connection to the server");
             lobby_close();
         } else if (s_state == NP_LOBBY_CONNECTING) {
@@ -1066,7 +1131,7 @@ void netplay_lobby_tick(void)
             }
             if (s_welcomed) {
                 char t[128];
-                if (s_resume_set && s_blocking == 2) {   /* restarted process: take the seat back */
+                if (s_resume_set && (s_blocking == 2 || s_blocking == 3)) {   /* restarted process: take the seat back */
                     uint8_t buf[32];
                     SmbNetWriter w;
                     smbw_init(&w, buf, sizeof buf);
@@ -1096,9 +1161,25 @@ void netplay_lobby_tick(void)
             snprintf(t, sizeof t, "In room %s", s_room_code);
             netplay_push_notice(NP_EV_INFO, t);
         }
-        if (s_got_error && !s_blocking) {
+        if (s_state == NP_LOBBY_RESUMING && s_blocking == 3 && s_got_room) {
+            /* E9: back in the room's lobby after a session */
+            char t[64];
+            s_blocking = 0;
+            s_state = NP_LOBBY_IN_ROOM;
+            snprintf(t, sizeof t, "Back in room %s", s_room_code);
+            netplay_push_notice(NP_EV_INFO, t);
+            printf("[netplay] back in room %s (lobby): %d player(s), host client %u, we are client %u\n", s_room_code,
+                   (int)s_room_count, (unsigned)s_room_host, (unsigned)s_client_id);
+            fflush(stdout);
+        }
+        if (s_got_error && (!s_blocking || s_blocking == 3)) {
             s_got_error = 0;
             if (s_state == NP_LOBBY_JOINING) s_state = NP_LOBBY_READY;
+            if (s_state == NP_LOBBY_RESUMING && s_blocking == 3) {
+                s_blocking = 0;
+                s_state = NP_LOBBY_READY;   /* the seat is gone (grace over, room closed): connected, no room */
+                netplay_push_notice(NP_EV_WARN, "The room is gone; you can create or join another");
+            }
         }
         /* the host started: restart into the session (the command-line wrappers consume it themselves) */
         if (s_game_started && !s_blocking && (s_state == NP_LOBBY_IN_ROOM || s_state == NP_LOBBY_JOINING))
@@ -1229,13 +1310,33 @@ int netplay_lobby_resume(SessionConfig *out)
 }
 /* ------------------------------------------------------------ lockstep */
 
-/* End of the session.  A session that was started from the in-game lobby (restarted process) goes back to normal
- * offline play by restarting the program again; command-line and automated runs just exit with `code`
- * (0 ended normally / window closed, 3 lost the server or timed out, 4 desync). */
-static void session_end(int code, const char *why)
+/* End of the session (E9).  `room_alive` = the server ended the game but the room still exists in its lobby phase
+ * (desync, the host ended it, everyone else left): then a session that was started from the in-game lobby goes BACK
+ * TO THE LOBBY: the program restarts (a session is a fresh process, E1 D20), tells the server RELAUNCHING (the seat is
+ * held), and the new offline process RESUMEs into the room (--np-lobby).  Otherwise (lost the server, timeout) it
+ * restarts into plain offline play.  Both show `why` as a toast.  Command-line and automated runs exit with `code`
+ * instead (0 ended normally / window closed, 3 lost the server or timed out, 4 desync), unless --np-lobby-return
+ * (test) asks to go back to the lobby anyway. */
+static void session_end(int code, const char *why, int room_alive)
 {
     printf("[netplay] %s\n", why);
     fflush(NULL);
+#ifdef _WIN32
+    if ((s_resumed && !s_automated) || s_test_return) {
+        char notice[256];
+        if (room_alive && !s_disconnected && s_peer && s_room_code[0] && (s_caps & SMB_CAP_LOBBY_RESUME)) {
+            snprintf(notice, sizeof notice, "Back in the lobby - %s", why);
+            s_active = 0;
+            if (hand_over(0, notice)) {
+                printf("[netplay] restarted back into the room lobby (room %s kept)\n", s_room_code);
+                fflush(NULL);
+                exit(0);
+            }
+            printf("[netplay] can't restart back into the lobby, going offline\n");
+            fflush(NULL);
+        }
+    }
+#endif
     netplay_shutdown();
 #ifdef _WIN32
     if (s_resumed && !s_automated) {
@@ -1304,13 +1405,67 @@ static void describe_waiting(char *dst, size_t cap, uint32_t waited_ms)
 static void check_end(void)
 {
     if (s_ended) {
-        const char *why = s_end_reason == SMB_END_DESYNC ? "the game ended: DESYNC"
-                        : s_end_reason == SMB_END_HOST ? "the game ended: the host ended it"
-                        : s_end_reason == SMB_END_PLAYER_LEFT ? "the game ended: everyone else left"
-                                                              : "the game ended";
-        session_end(s_end_reason == SMB_END_DESYNC ? 4 : 0, why);
+        char why[160];
+        if (s_end_reason == SMB_END_DESYNC)
+            snprintf(why, sizeof why, "the game ended: DESYNC (the players' game states differ near poll %u)",
+                     (unsigned)(s_desync ? s_desync_poll : s_next_poll));
+        else if (s_end_reason == SMB_END_HOST)
+            snprintf(why, sizeof why, "the game ended: the host ended it");
+        else if (s_end_reason == SMB_END_PLAYER_LEFT)
+            snprintf(why, sizeof why, "the game ended: everyone else left");
+        else
+            snprintf(why, sizeof why, "the game ended");
+        netplay_push_notice(s_end_reason == SMB_END_DESYNC ? NP_EV_ERROR : NP_EV_INFO, why);
+        session_end(s_end_reason == SMB_END_DESYNC ? 4 : 0, why, 1);
     }
-    if (s_disconnected) session_end(3, "lost the connection to the server");
+    if (s_disconnected) session_end(3, "lost the connection to the server", 0);
+}
+
+/* E9 test hooks that act at a poll (SMB_NETPLAY_TEST_DROP / _STALL / _ENDGAME). */
+static void run_test_hooks(uint32_t poll)
+{
+    if (s_hook_drop >= 0 && (long)poll >= s_hook_drop) {
+        printf("[netplay] TEST HOOK: dropping out at poll %u (%s)\n", (unsigned)poll,
+               s_hook_drop_mode == 0 ? "hard kill, no goodbye" : s_hook_drop_mode == 1 ? "Quit to Desktop" : "LEAVE_ROOM");
+        fflush(NULL);
+        s_hook_drop = -1;
+        if (s_hook_drop_mode == 1) {
+            pc_quit_request("Quit to Desktop (test hook)");   /* exits at the next frame via pc_quit_poll */
+        } else if (s_hook_drop_mode == 2) {
+            send_simple(SMB_MSG_LEAVE_ROOM);
+            exit(0);
+        } else {
+#ifdef _WIN32
+            TerminateProcess(GetCurrentProcess(), 99);
+#else
+            _Exit(99);
+#endif
+        }
+    }
+    if (s_hook_stall >= 0 && (long)poll >= s_hook_stall) {
+        long left = s_hook_stall_ms;
+        printf("[netplay] TEST HOOK: stalling the main loop for %ld ms at poll %u (%s)\n", left, (unsigned)poll,
+               s_hook_stall_net ? "network still serviced" : "network frozen");
+        fflush(NULL);
+        s_hook_stall = -1;
+        while (left > 0) {
+            long step = left > 100 ? 100 : left;
+#ifdef _WIN32
+            Sleep((DWORD)step);
+#endif
+            left -= step;
+            BUMP_PULSE();   /* a frozen process would trip the watchdog; this hook only freezes the sim/network */
+            if (s_hook_stall_net) net_service(0);
+        }
+        printf("[netplay] TEST HOOK: stall over\n");
+        fflush(NULL);
+    }
+    if (s_hook_endgame >= 0 && (long)poll >= s_hook_endgame) {
+        s_hook_endgame = -1;
+        printf("[netplay] TEST HOOK: host ends the game at poll %u\n", (unsigned)poll);
+        fflush(NULL);
+        netplay_end_game();
+    }
 }
 
 static int net_exchange(uint32_t poll, const SmbNetPad local[INPUTSYNC_PORTS], SmbNetPad out[INPUTSYNC_PORTS],
@@ -1331,6 +1486,7 @@ static int net_exchange(uint32_t poll, const SmbNetPad local[INPUTSYNC_PORTS], S
         s_perf_last_ms = enet_time_get();
     }
     s_next_poll = poll;
+    run_test_hooks(poll);
 
     {   /* checksum E3 computed for the poll just completed (every 60) */
         uint32_t h, cp = checksum_latest(&h);
@@ -1340,6 +1496,13 @@ static int net_exchange(uint32_t poll, const SmbNetPad local[INPUTSYNC_PORTS], S
             smbw_init(&w, b, sizeof b);
             smbw_u8(&w, SMB_MSG_CHECKSUM);
             smbw_u32(&w, cp);
+            if (s_hook_desync >= 0 && (long)cp >= s_hook_desync) {
+                if (s_hook_desync != -2) {
+                    printf("[netplay] TEST HOOK: sending a wrong checksum from poll %u on\n", (unsigned)cp);
+                    fflush(NULL);
+                }
+                h ^= 0x5EED0001u;
+            }
             smbw_u32(&w, h);
             send_buf(SMB_NET_CHANNEL_CONTROL, b, w.pos);
             s_last_cs_sent = cp;
@@ -1374,7 +1537,7 @@ static int net_exchange(uint32_t poll, const SmbNetPad local[INPUTSYNC_PORTS], S
             set_wait_title(title);
         }
         if (waited > (poll < 4 ? FIRST_POLL_TIMEOUT_MS : WAIT_TIMEOUT_MS))
-            session_end(3, "timed out waiting for the other players");
+            session_end(3, "timed out waiting for the other players", 0);
     }
     if (last_msg) set_wait_title(NULL);
 
@@ -1384,6 +1547,12 @@ static int net_exchange(uint32_t poll, const SmbNetPad local[INPUTSYNC_PORTS], S
             printf("[netplay] poll %u: human mask %02x -> %02x\n", (unsigned)poll, (unsigned)s_human_mask,
                    (unsigned)slot->mask);
             fflush(stdout);
+            for (port = 0; port < INPUTSYNC_PORTS; port++)
+                if ((s_human_mask & (1 << port)) && !(slot->mask & (1 << port))) {
+                    printf("[netplay] poll %u: P%d (%s) is neutral from here on (no controller)\n", (unsigned)poll,
+                           port + 1, s_port_names[port]);
+                    fflush(stdout);
+                }
         }
         s_human_mask = slot->mask;
     }
@@ -1410,6 +1579,26 @@ static int net_exchange(uint32_t poll, const SmbNetPad local[INPUTSYNC_PORTS], S
     return 0;
 }
 
+static void read_test_hooks(void)
+{
+    const char *v;
+    if ((v = getenv("SMB_NETPLAY_TEST_DROP")) && v[0]) {
+        s_hook_drop = atol(v);
+        s_hook_drop_mode = strstr(v, ":quit") ? 1 : strstr(v, ":leave") ? 2 : 0;
+    }
+    if ((v = getenv("SMB_NETPLAY_TEST_DESYNC")) && v[0]) s_hook_desync = atol(v);
+    if ((v = getenv("SMB_NETPLAY_TEST_ENDGAME")) && v[0]) s_hook_endgame = atol(v);
+    if ((v = getenv("SMB_NETPLAY_TEST_STALL")) && v[0]) {
+        const char *c = strchr(v, ':');
+        s_hook_stall = atol(v);
+        s_hook_stall_ms = c ? atol(c + 1) : 10000;
+        s_hook_stall_net = strstr(v, ":net") != NULL;
+    }
+    if (s_hook_drop >= 0 || s_hook_desync >= 0 || s_hook_stall >= 0 || s_hook_endgame >= 0)
+        printf("[netplay] test hooks: drop %ld desync %ld stall %ld/%ldms endgame %ld\n", s_hook_drop, s_hook_desync,
+               s_hook_stall, s_hook_stall_ms, s_hook_endgame);
+}
+
 int netplay_begin(void)
 {
     if (!s_game_started || !s_peer) return 0;
@@ -1417,6 +1606,7 @@ int netplay_begin(void)
     s_state = NP_LOBBY_IN_GAME;
     s_main_tid = SDL_GetCurrentThreadID();
     inputsync_set_netplay(net_exchange, NULL);
+    read_test_hooks();
     /* the watch needs SDL initialised: the event subsystem comes up with the window,
      * so add it lazily if it isn't yet (AddEventWatch itself needs no init) */
     if (!s_watch_added) {
@@ -1426,5 +1616,29 @@ int netplay_begin(void)
     printf("[netplay] lockstep on: input delay %u polls, ports owned %x\n", (unsigned)s_game_cfg.inputDelay,
            s_owned_mask);
     fflush(stdout);
+    return 1;
+}
+
+/* ------------------------------------------------------------ E9 API */
+
+void netplay_set_test_lobby_return(int on) { s_test_return = on; }
+void netplay_set_return_script(const char *spec) { snprintf(s_return_script, sizeof s_return_script, "%s", spec ? spec : ""); }
+
+/* Restarted back to the lobby (--np-lobby): reconnect, RESUME, land in NP_LOBBY_IN_ROOM (netplay_lobby_tick). */
+int netplay_lobby_return(const char *server, const char *name)
+{
+    if (!s_resume_set) return 0;
+    s_blocking = 3;
+    if (!netplay_lobby_connect(server, name)) { s_blocking = 0; return 0; }
+    printf("[netplay] restarted back to the lobby of room %s as client %d: taking the seat back\n", s_resume_code,
+           s_resume_id);
+    fflush(stdout);
+    return 1;
+}
+
+int netplay_end_game(void)
+{
+    if (!s_active || !s_peer || s_room_host != s_client_id) return 0;
+    send_simple(SMB_MSG_END_GAME);
     return 1;
 }

@@ -16,7 +16,9 @@
  *     (--server H:P --np-resume CODE,ID,TOKEN --name N): the new process
  *     reconnects, takes its seat back (server RESUME), gets the session config
  *     and boots a fresh deterministic session, lockstep from poll 0.  The old
- *     process quits.  When the session ends the exe restarts into offline mode.
+ *     process quits.  When the session ends the exe restarts: back into the room's lobby (E9: desync, host ended the
+ *     game, everyone else left; the seat is held with RELAUNCHING + RESUME as above, state NP_LOBBY_IN_ROOM again), or
+ *     into plain offline mode (lost the server, timeout).  See docs/handoff/E9.md.
  *
  *  2. LOCKSTEP (in a session): netplay_begin() installs the inputsync NETPLAY
  *     source: each poll sends the local pad for poll+delay and blocks until the
@@ -112,6 +114,13 @@ void netplay_set_exit_file(const char *path);
 void netplay_set_automated(int on);
 /* --lobby-test-script "F:action,..." : see docs/handoff/E8.md.  Drives the lobby API from the frame loop. */
 int netplay_set_lobby_script(const char *spec);
+/* E9 test flags: --np-lobby-return (return to the lobby after a session even in automated runs), --np-return-script SPEC
+ * (the --lobby-test-script given to the process that returns to the lobby). */
+void netplay_set_test_lobby_return(int on);
+void netplay_set_return_script(const char *spec);
+/* Restarted back into the room's lobby after a session (--np-lobby --np-resume): reconnect, take the seat back, the
+ * lobby API then reports NP_LOBBY_IN_ROOM (non-blocking, finished by netplay_lobby_tick).  1 = started. */
+int netplay_lobby_return(const char *server, const char *name);
 
 /* ---- lobby API (non-blocking, call from the main thread) ---- */
 /* Once per frame while offline (video_finish_frame and the overlay pause loop). */
@@ -144,6 +153,8 @@ int netplay_lobby_resume(SessionConfig *cfg);
 int netplay_begin(void);
 /* 1 while a netplay session is running (lockstep installed). */
 int netplay_active(void);
+/* Host, in a session: end the game for everybody; the room returns to the lobby (END_GAME).  1 = sent. */
+int netplay_end_game(void);
 /* Input delay of the running session (polls). */
 int netplay_input_delay(void);
 /* Leave the room and close the connection (also registered with atexit). */
