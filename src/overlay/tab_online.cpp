@@ -412,6 +412,8 @@ static void script_run() {
 // Once per platform_poll_events (overlay_poll_tick).
 void online_tick() {
     script_run();
+    // START_GAME arrived: the exe is about to restart.  An open overlay pauses the game loop, which would then never quit.
+    if (netplay_lobby_state() == NP_LOBBY_STARTING && overlay_is_open()) overlay_set_open(false);
     if (s_leave_pending) {
         s_leave_pending = false;
         netplay_session_leave();
