@@ -81,7 +81,8 @@ bool overlay_init(SDL_Window* window, OverlayRenderer renderer) {
     }
     s_ready = true;
     if (s_start_open) overlay_set_open(true);
-    printf("[overlay] Dear ImGui %s ready (OpenGL)\n", IMGUI_VERSION);
+    printf("[overlay] Dear ImGui %s ready (%s)\n", IMGUI_VERSION,
+           renderer == OVERLAY_RENDERER_GL ? "OpenGL" : "Direct3D 12");
     return true;
 }
 

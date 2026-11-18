@@ -93,7 +93,10 @@ void overlay_d3d12_new_frame(void) {
 
 void overlay_d3d12_render(ImDrawData* dd, void* cmdlist) {
     if (!s_ready || !dd || !cmdlist) return;
-    ImGui_ImplDX12_RenderDrawData(dd, (ID3D12GraphicsCommandList*)cmdlist);
+    // the backend does not bind its SRV heap itself; the renderer re-binds its own heaps afterwards
+    ID3D12GraphicsCommandList* cl = (ID3D12GraphicsCommandList*)cmdlist;
+    cl->SetDescriptorHeaps(1, &s_heap);
+    ImGui_ImplDX12_RenderDrawData(dd, cl);
 }
 
 // Swap chain resize / device objects reset.  The DX12 backend has no size
