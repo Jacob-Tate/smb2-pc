@@ -53,6 +53,7 @@ uint64_t pc_session_poll_count(void) { return s_polls; }
 
 extern void pc_session_game_sync(void);   /* pc_session_shim.c */
 extern void pc_session_state_log(void);
+#include "netplay/checksum.h"
 
 void pc_session_on_poll(void)
 {
@@ -62,6 +63,7 @@ void pc_session_on_poll(void)
     s_tick_calls = 0;
     pc_session_game_sync();
     pc_session_state_log();
+    checksum_on_poll(s_polls);   /* E3: every 60 polls, "poll N hash X" */
 }
 
 int64_t pc_session_os_time(void)

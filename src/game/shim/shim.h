@@ -28,7 +28,8 @@ extern int  platform_should_close(void);   /* bool in pc_port; int-compatible */
 extern void platform_swap_buffers(void);
 extern unsigned long long platform_get_ticks_ms(void);
 extern void platform_sleep_ms(unsigned int ms);
-extern void input_poll_gc_pads(void);  /* fills pad_status_groups from SDL */
+extern void input_poll_gc_pads(void);  /* fills pad_status_groups from SDL (local only: modal screens) */
+extern void input_poll_gc_pads_game(void);  /* same, for the game's per-poll call: goes through inputsync (E3) */
 
 /* iso.c helpers added for the DVD shim */
 extern int  iso_entry_count(struct ISOArchive *arc);

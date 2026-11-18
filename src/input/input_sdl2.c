@@ -22,6 +22,7 @@
 #include "button_prompts.h"
 #include "gc_stick.h"
 #include "pad_config.h"
+#include "netplay/inputsync.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -773,7 +774,15 @@ static void game_process_sticks(int log) {
  * operating on the pad_status_groups global defined above (which stands in for
  * the GC pad data the DOL would fill from PADRead).  This function is the SDL
  * poller that fills it, called once per frame by the shim's video_finish_frame. */
-void input_poll_gc_pads(void)
+/* game = 1 for the call from video_finish_frame (E3 pad hook, see below);
+ * the modal shim screens call input_poll_gc_pads() and stay local-only. */
+/* the local sample, kept apart from pad_status_groups[].status[0] while a
+ * non-live source overwrites that with the exchanged pads (E1 D6) */
+static PADStatus s_local_pads[MAX_CONTROLLERS];
+static void poll_gc_pads_impl(int game);
+void input_poll_gc_pads(void) { poll_gc_pads_impl(0); }
+void input_poll_gc_pads_game(void) { poll_gc_pads_impl(1); }
+static void poll_gc_pads_impl(int game)
 #else
 void process_inputs(void)
 #endif
@@ -782,6 +791,16 @@ void process_inputs(void)
     for (int i = 0; i < MAX_CONTROLLERS; i++) {
         pad_status_groups[i].status[1] = pad_status_groups[i].status[0];
     }
+#ifdef SMB2_LINK_GAME
+    /* E3: with a non-live pad source status[0] holds the exchanged (remote /
+     * replayed) pads, not the local state the sampling code below builds on
+     * (keyboard OR-in, trigger and stick persistence): put the private
+     * local sample back first. */
+    const int sync = game && inputsync_overrides();
+    if (sync)
+        for (int i = 0; i < MAX_CONTROLLERS; i++)
+            pad_status_groups[i].status[0] = s_local_pads[i];
+#endif
     s_esc_pressed = 0;
 
     /* Poll SDL events and update current status (index 0) */
@@ -976,6 +995,41 @@ void process_inputs(void)
         prev_inject = inject;
 #undef script_frame
     }
+
+#ifdef SMB2_LINK_GAME
+    /* E3 pad hook (docs/handoff/E3.md): the local sample is complete here
+     * (devices + keyboard + script, post stick gate).  Keep it as the private
+     * local state, hand the 4 pads to inputsync and use what comes back for
+     * all 4 ports (value + err). */
+    if (game) {
+        SmbNetPad loc[INPUTSYNC_PORTS], out[INPUTSYNC_PORTS];
+        for (int i = 0; i < MAX_CONTROLLERS; i++) {
+            const PADStatus* st = &pad_status_groups[i].status[0];
+            s_local_pads[i] = *st;
+            loc[i].buttons = st->button;
+            loc[i].stickX = st->stickX; loc[i].stickY = st->stickY;
+            loc[i].substickX = st->substickX; loc[i].substickY = st->substickY;
+            loc[i].triggerL = st->triggerLeft; loc[i].triggerR = st->triggerRight;
+            loc[i].err = st->err;
+        }
+        inputsync_exchange(loc, out);
+        for (int i = 0; sync && i < MAX_CONTROLLERS; i++) {
+            PADStatus* st = &pad_status_groups[i].status[0];
+            ControllerInfo* r = &lbl_80145210[i];
+            st->button = out[i].buttons;
+            st->stickX = out[i].stickX; st->stickY = out[i].stickY;
+            st->substickX = out[i].substickX; st->substickY = out[i].substickY;
+            st->triggerLeft = out[i].triggerL; st->triggerRight = out[i].triggerR;
+            st->analogA = st->analogB = 0;
+            st->err = out[i].err;
+            /* the raw-pad copy the Options screens read (E1 D5): the exchanged
+             * (post-gate) value; edge slots recomputed from its previous one */
+            r->status[0] = *st;
+            r->status[2].button = (uint16_t)(r->status[0].button & ~r->status[1].button);
+            r->status[3].button = (uint16_t)(r->status[1].button & ~r->status[0].button);
+        }
+    }
+#endif
 
     /* Derive the pressed/released/repeat slots ([2]/[3]/[4]) the GC pad
      * processing would provide; the game reads these directly. */
