@@ -1,6 +1,6 @@
 /* In-game overlay (Dear ImGui, third_party/imgui).  C API; the implementation
- * is C++ (src/overlay/overlay.cpp).  D1: SDL3 + OpenGL.  D2 adds Direct3D 12
- * (until then overlay_toggle is a logged no-op there), D3 input routing,
+ * is C++ (src/overlay/overlay.cpp).  D1: SDL3 + OpenGL.  D2: Direct3D 12 (bridge:
+ * src/overlay/overlay_d3d12.cpp), D3 input routing,
  * D4 tabs.  All calls are made on the main (game/render) thread. */
 #ifndef SMB2_OVERLAY_H
 #define SMB2_OVERLAY_H
@@ -42,6 +42,14 @@ void overlay_toggle(void);
 void overlay_set_open(bool open);
 /* true while the overlay wants mouse/keyboard (open and ImGui captured it) */
 bool overlay_wants_input(void);
+
+/* Direct3D 12 only (called by render_d3d12.c).  Before overlay_render(): the open
+ * graphics command list with the destination RTV (R8G8B8A8_UNORM, 1 sample) bound
+ * and in RENDER_TARGET state; pass NULL afterwards.  The overlay binds its own
+ * descriptor heap and root signature, so the renderer must re-apply its list state.
+ * overlay_d3d12_invalidate(): GPU idle, swap chain / targets were recreated. */
+void overlay_d3d12_set_target(void* id3d12_graphics_command_list);
+void overlay_d3d12_invalidate(void);
 
 /* Test hooks: --overlay-open (open from start), --overlay-open-frames a-b
  * (open while a <= swapped frame < b; applied by overlay_render). */

@@ -60,6 +60,22 @@
 #ifdef _MSC_VER
 #pragma comment(lib, "d3dcompiler") // Automatically link with d3dcompiler.lib as we are using D3DCompile() below.
 #endif
+// SMB2 local change: D3DCompile is resolved from d3dcompiler_47.dll at run time (as render_d3d12.c does), so the exe has no
+// link-time import of d3dcompiler (the DLL may be missing on machines that fall back to OpenGL).
+static HRESULT ImGui_ImplDX12_D3DCompile(LPCVOID src, SIZE_T len, LPCSTR srcName, const D3D_SHADER_MACRO* defines, ID3DInclude* inc,
+                                         LPCSTR entry, LPCSTR target, UINT f1, UINT f2, ID3DBlob** code, ID3DBlob** errors)
+{
+    typedef HRESULT (WINAPI *PFN_D3DCOMPILE_)(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
+    static PFN_D3DCOMPILE_ fn = nullptr;
+    if (!fn)
+    {
+        HMODULE dll = ::LoadLibraryA("d3dcompiler_47.dll");
+        if (dll) fn = (PFN_D3DCOMPILE_)(void*)::GetProcAddress(dll, "D3DCompile");
+    }
+    if (!fn) return E_FAIL;
+    return fn(src, len, srcName, defines, inc, entry, target, f1, f2, code, errors);
+}
+
 
 // DirectX12 data
 struct ImGui_ImplDX12_RenderBuffers;
@@ -674,7 +690,7 @@ bool    ImGui_ImplDX12_CreateDeviceObjects()
               return output;\
             }";
 
-        if (FAILED(D3DCompile(vertexShader, strlen(vertexShader), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &vertexShaderBlob, nullptr)))
+        if (FAILED(ImGui_ImplDX12_D3DCompile(vertexShader, strlen(vertexShader), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &vertexShaderBlob, nullptr)))
             return false; // NB: Pass ID3DBlob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
         psoDesc.VS = { vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize() };
 
@@ -706,7 +722,7 @@ bool    ImGui_ImplDX12_CreateDeviceObjects()
               return out_col; \
             }";
 
-        if (FAILED(D3DCompile(pixelShader, strlen(pixelShader), nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0, &pixelShaderBlob, nullptr)))
+        if (FAILED(ImGui_ImplDX12_D3DCompile(pixelShader, strlen(pixelShader), nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0, &pixelShaderBlob, nullptr)))
         {
             vertexShaderBlob->Release();
             return false; // NB: Pass ID3DBlob* pErrorBlob to D3DCompile() to get error showing in (const char*)pErrorBlob->GetBufferPointer(). Make sure to Release() the blob!
@@ -981,7 +997,11 @@ static void ImGui_ImplDX12_CreateWindow(ImGuiViewport* viewport)
     sd1.Stereo = FALSE;
 
     IDXGIFactory4* dxgi_factory = nullptr;
-    res = ::CreateDXGIFactory1(IID_PPV_ARGS(&dxgi_factory));
+    // SMB2 local change: dxgi.dll is loaded at run time (no link-time import); multi-viewports are not used by the port anyway.
+    typedef HRESULT (WINAPI *PFN_CREATE_DXGI_FACTORY1_)(REFIID, void**);
+    HMODULE dxgi_dll = ::LoadLibraryA("dxgi.dll");
+    PFN_CREATE_DXGI_FACTORY1_ create_factory = dxgi_dll ? (PFN_CREATE_DXGI_FACTORY1_)(void*)::GetProcAddress(dxgi_dll, "CreateDXGIFactory1") : nullptr;
+    res = create_factory ? create_factory(IID_PPV_ARGS(&dxgi_factory)) : E_FAIL;
     IM_ASSERT(res == S_OK);
 
     IDXGISwapChain1* swap_chain = nullptr;

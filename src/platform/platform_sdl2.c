@@ -476,6 +476,17 @@ static void sdl2_swap_buffers(PlatformContext* ctx) {
         }
         s_frame++;
         g_dbg_frame_counter = s_frame;
+        {   /* test hook (D2): SMB2_TEST_RESIZE_AT=<frame> resizes the window (960x540 at F, 1280x720 at F+60),
+             * then toggles borderless fullscreen at F+120 and windowed again at F+180 */
+            static long resize_at = -2;
+            if (resize_at == -2) { const char* e = getenv("SMB2_TEST_RESIZE_AT"); resize_at = e ? atol(e) : -1; }
+            if (resize_at > 0 && data->window) {
+                long d = s_frame - resize_at;
+                if (d == 0)   { printf("[test] resize 960x540\n");  SDL_SetWindowSize(data->window, 960, 540); }
+                if (d == 60)  { printf("[test] resize 1280x720\n"); SDL_SetWindowSize(data->window, 1280, 720); }
+                if (d == 120 || d == 180) { printf("[test] toggle fullscreen\n"); pcs_toggle_fullscreen(); }
+            }
+        }
         {
             extern long g_exit_frame_arg;
             if (g_exit_frame_arg > 0 && s_frame >= g_exit_frame_arg) {

@@ -25,6 +25,7 @@
 #include "render.h"
 #include "gx_gpu.h"
 #include "platform.h"
+#include "overlay.h"
 
 #pragma GCC diagnostic ignored "-Woverlength-strings"
 
@@ -545,6 +546,9 @@ static struct {
     ID3D12Resource* cap;              /* F1 overlay capture */
     int cap_w, cap_h, cap_ok;
     D3D12_CPU_DESCRIPTOR_HANDLE cap_srv;
+    ID3D12Resource* ovl;              /* frame dump target: game frame + overlay (1 sample, rests in COPY_SOURCE) */
+    ID3D12DescriptorHeap* ovl_rtv_heap;
+    ID3D12Resource* read_override;    /* dx_read_pixels source instead of the game target */
     ID3D12Resource* readback;         /* READBACK heap buffer */
     size_t readback_size;
 
@@ -874,6 +878,27 @@ static void apply_frame_state(void) {
     D.last_dc_ok = D.last_tc_ok = 0;
     D.tables_dirty = 1;
     D.root_dirty = 1;
+}
+
+/* ------------------------------------------------------------ overlay (D2) */
+/* Dear ImGui (src/overlay, C++) draws with its own pipeline and shader-visible
+ * heap into a 1-sample R8G8B8A8 target that is already in RENDER_TARGET
+ * state: the back buffer at present, or a scratch copy for frame dumps. */
+int gx_d3d12_overlay_handles(void** device, void** queue, int* frames) {
+    if (!D.ok || !D.dev || !D.queue) return 0;
+    *device = D.dev;
+    *queue = D.queue;
+    *frames = NFRAMES + 1;   /* one spare: the dump path renders an extra overlay frame */
+    return 1;
+}
+
+/* Record the overlay into D.cl over `rtv`, then forget everything it bound. */
+static void draw_overlay(D3D12_CPU_DESCRIPTOR_HANDLE rtv) {
+    ID3D12GraphicsCommandList_OMSetRenderTargets(D.cl, 1, &rtv, FALSE, NULL);
+    overlay_d3d12_set_target(D.cl);
+    overlay_render();
+    overlay_d3d12_set_target(NULL);
+    apply_frame_state();   /* heaps, root signature, RT/DS, viewport, PSO cache */
 }
 
 /* ---------------------------------------------------------- PSO cache */
@@ -1237,6 +1262,7 @@ static void release_targets(void) {
     if (D.rt) { ID3D12Resource_Release(D.rt); D.rt = NULL; }
     if (D.ds) { ID3D12Resource_Release(D.ds); D.ds = NULL; }
     if (D.rt_res) { ID3D12Resource_Release(D.rt_res); D.rt_res = NULL; }
+    if (D.ovl) { ID3D12Resource_Release(D.ovl); D.ovl = NULL; }
 }
 
 static int create_targets(void) {
@@ -1277,6 +1303,7 @@ static int create_targets(void) {
  * returns the resource (rt itself, or rt_res after a resolve) in
  * COPY_SOURCE state.  Callers restore with rt_to(RENDER_TARGET). */
 static ID3D12Resource* resolved_source(void) {
+    if (D.read_override) return D.read_override;   /* already in COPY_SOURCE */
     if (D.msaa <= 1) {
         rt_to(D3D12_RESOURCE_STATE_COPY_SOURCE);
         return D.rt;
@@ -2161,6 +2188,32 @@ static int dx_read_pixels(int x, int y, int w, int h, int depth, void* out) {
     return 1;
 }
 
+/* Frame dump source with the overlay composed on top (like GL's read_frame):
+ * a single-sample copy of the finished game frame gets the overlay drawn
+ * into it, then dx_read_pixels reads it instead of the game target. */
+static int overlay_compose_for_dump(void) {
+    ID3D12Resource* src;
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv;
+    if (!D.ovl) {
+        D.ovl = make_tex2d(D.width, D.height, 1, DXGI_FORMAT_R8G8B8A8_UNORM, 1,
+                           D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE, NULL);
+        if (!D.ovl) return 0;
+        if (!D.ovl_rtv_heap) D.ovl_rtv_heap = make_heap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 1, 0);
+        if (!D.ovl_rtv_heap) return 0;
+        ID3D12Device_CreateRenderTargetView(D.dev, D.ovl, NULL,
+            ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(D.ovl_rtv_heap));
+    }
+    src = resolved_source();                       /* COPY_SOURCE */
+    barrier(D.ovl, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    ID3D12GraphicsCommandList_CopyResource(D.cl, D.ovl, src);
+    barrier(D.ovl, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    rt_to(D3D12_RESOURCE_STATE_RENDER_TARGET);
+    rtv = ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(D.ovl_rtv_heap);
+    draw_overlay(rtv);
+    barrier(D.ovl, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    return 1;
+}
+
 static int dx_read_frame(unsigned char** rgb, int* pw, int* ph) {
     size_t n = (size_t)D.width * D.height * 4;
     uint8_t* tmp;
@@ -2168,7 +2221,10 @@ static int dx_read_frame(unsigned char** rgb, int* pw, int* ph) {
     if (!D.ok) return 0;
     tmp = (uint8_t*)malloc(n);
     if (!tmp) return 0;
-    if (!dx_read_pixels(0, 0, D.width, D.height, 0, tmp)) { free(tmp); return 0; }
+    if (overlay_is_open() && overlay_compose_for_dump()) D.read_override = D.ovl;
+    y = dx_read_pixels(0, 0, D.width, D.height, 0, tmp);
+    D.read_override = NULL;
+    if (!y) { free(tmp); return 0; }
     if (D.frame_rgb_size < (size_t)D.width * D.height * 3) {
         free(D.frame_rgb);
         D.frame_rgb_size = (size_t)D.width * D.height * 3;
@@ -2228,18 +2284,27 @@ static void dx_present(void) {
     if (!D.ok) return;
     idx = IDXGISwapChain3_GetCurrentBackBufferIndex(D.swap);
     bb = D.bb[idx];
+    D3D12_RESOURCE_STATES after_copy;
     if (D.msaa > 1) {
+        after_copy = D3D12_RESOURCE_STATE_RESOLVE_DEST;
         rt_to(D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
-        barrier(bb, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RESOLVE_DEST);
+        barrier(bb, D3D12_RESOURCE_STATE_PRESENT, after_copy);
         ID3D12GraphicsCommandList_ResolveSubresource(D.cl, bb, 0, D.rt, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
-        barrier(bb, D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_PRESENT);
     } else {
+        after_copy = D3D12_RESOURCE_STATE_COPY_DEST;
         rt_to(D3D12_RESOURCE_STATE_COPY_SOURCE);
-        barrier(bb, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST);
+        barrier(bb, D3D12_RESOURCE_STATE_PRESENT, after_copy);
         ID3D12GraphicsCommandList_CopyResource(D.cl, bb, D.rt);
-        barrier(bb, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
     }
     rt_to(D3D12_RESOURCE_STATE_RENDER_TARGET);
+    if (overlay_is_open()) {   /* Dear ImGui over the finished frame (D2) */
+        barrier(bb, after_copy, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        draw_overlay(heap_cpu(D.rtv_heap, idx, D.rtv_inc));
+        barrier(bb, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    } else {
+        barrier(bb, after_copy, D3D12_RESOURCE_STATE_PRESENT);
+        overlay_render();   /* closed: schedule hook only (--overlay-open-frames) */
+    }
     if (D.q_ok) {
         ID3D12GraphicsCommandList_EndQuery(D.cl, D.qheap, D3D12_QUERY_TYPE_TIMESTAMP, (UINT)D.slot * 2 + 1);
         ID3D12GraphicsCommandList_ResolveQueryData(D.cl, D.qheap, D3D12_QUERY_TYPE_TIMESTAMP,
