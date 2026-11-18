@@ -3,6 +3,8 @@
 #   SMB2_ISO      disc image, Windows or Git Bash path (default: the dev machine's ISO)
 #   SMOKE_OUT     output dir (default: mktemp -d); frame dumps, log.txt, save/ go here
 #   SMOKE_KEEP=1  keep the output dir on PASS too
+#   SMB2_TEST_IGNORE_PAD  VID/PID list SDL ignores (default: the dev PC's Steam Controller, which injects
+#                 stray input into scripted runs); set to empty to allow every pad
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 EXE=${1:-$REPO/build64/bin/smb2_pc_port.exe}
 # the scripts cd into $OUT before running: make a relative exe path absolute
@@ -13,6 +15,8 @@ ISO=${SMB2_ISO:-C:/Users/jacob/source/super_monkey/Super Monkey Ball 2 (USA).iso
 OUT=${SMOKE_OUT:-$(mktemp -d)}
 mkdir -p "$OUT/save"
 LOG=$OUT/log.txt
+export SDL_GAMECONTROLLER_IGNORE_DEVICES=${SMB2_TEST_IGNORE_PAD-0x28DE/0x1304}
+export SDL_JOYSTICK_IGNORE_DEVICES=$SDL_GAMECONTROLLER_IGNORE_DEVICES
 
 # smoke_run <exit-frame> <dump-interval> <input-script>
 # cwd = $OUT because the game writes frame_NNNNN.ppm into its working directory.

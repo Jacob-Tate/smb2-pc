@@ -52,7 +52,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
 | E2 | Deterministic session mode (`--det-session`) | E1 | game shim | DONE (f688666) |
-| E3 | Input record/replay + state checksum | E2 | input+shim | IN PROGRESS (task/E3, 2026-11-17) |
+| E3 | Input record/replay + state checksum | E2 | input+shim | DONE (3e0e393) |
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | TODO |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | TODO |
@@ -64,6 +64,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | REVIEW (merged 2f493e9; user checks Shift-start dialog) |
 | F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | DONE (c5b51f6, fix 372d700) |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
+| X1 | Integer divide-by-zero crash (0xC0000094) in Mode Select: script `1350:START,1450:START,1550:START,1800:A,2300:A,2400:RIGHT,2420:RIGHT`, no pad; also on pre-E3 builds | – | game shim | TODO (found by E3 agent) |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
 Dependency graph (parallel lanes after P0.3):
@@ -789,3 +790,13 @@ Candidate fixes (choose from C1's results; likely several):
   `SMB2_TEST_RESIZE_AT=<frame>` (resizes + fullscreen toggles). Orchestrator: x64 build OK, D3D12 `--overlay-open-frames`
   dump at 1560 shows the window over Mode Select, boot_to_menu PASS. Pre-existing debug-layer warning (timestamp query
   on frame 1) left for later. `overlay_d3d12_invalidate()` unused (renderer never recreates the device).
+- **E3 merged (3e0e393)**: `src/netplay/inputsync.{c,h}` (live/record/replay/netplay sources), `checksum.{c,h}`,
+  `src/game/shim/pc_state_hash.c` (curated hash, ~4 us), flags `--record/--replay/--checksum-log/--max-frames/--checksum-ring`.
+  `--record` and `--replay` imply `--det-session`; the record header carries epoch/locale/flags (replay ignores
+  `--session-*`). Orchestrator re-ran `tools/smoke/record_replay.sh` on merged x64: race (75 lines) + Main Game stage
+  (125 lines) replays identical; tampered input and other epoch detected. boot_to_menu + party_race_2p PASS.
+  **Gotcha:** the user's Steam Controller (0x28DE/0x1304) injects stray input into scripted runs (party_race_2p failed
+  with it on port 1 C-stick). `tools/smoke/common.sh` now sets `SDL_*_IGNORE_DEVICES` to it by default
+  (`SMB2_TEST_IGNORE_PAD=` to disable); any other test harness (E4, E6) must do the same. This may also matter for the
+  C2c Steam Controller REVIEW (drift / phantom C-stick?).
+  Scripted path to a Main Game stage: docs/handoff/E3.md. New bug X1 (divide-by-zero in Mode Select).
