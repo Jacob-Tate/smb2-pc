@@ -13,8 +13,8 @@
 #    third_party/zstd/zstddeclib.c, so no Windows-only LZMS API and no new DLL.
 # 3. SMB2.exe = launcher.exe + compressed archive + trailer (see launcher.cpp).
 #
-# Build id (16 chars, names the unpack folder; a different id = a new unpack): build_id() below. F2 replaces
-# it with SMB2_BUILD_ID (env override works today).
+# Build id (16 chars, names the unpack folder; a different id = a new unpack): build_id() below, derived from
+# the game's build id (F2); SMB2_BUILD_ID overrides.
 set -euo pipefail
 
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -31,13 +31,24 @@ fi
 
 rm -rf "$TMP"; mkdir -p "$TMP" "$OUT"
 
-# Single place that decides the build id (16 chars, [0-9a-zA-Z._-]).
+# Single place that decides the build id: exactly 16 chars of [0-9a-zA-Z._-], names the unpack folder.
+# Source: the game's build id (build64/gen/build_id.txt, written by cmake/build_id.cmake:
+# "<commit count>-<sha7>[+dirty]"), '+' -> '_', padded with '_' / cut to 16.  A dirty tree can differ
+# without a new commit, so dirty ids end in 'd' + archive hash chars instead (a new unpack per content).
 build_id() {   # $1 = uncompressed archive
+    local id=""
     if [ -n "${SMB2_BUILD_ID:-}" ]; then
-        printf '%s' "$SMB2_BUILD_ID" | head -c 16
+        id=$SMB2_BUILD_ID
+    elif [ -f "$BIN/../gen/build_id.txt" ]; then
+        id=$(head -n1 "$BIN/../gen/build_id.txt" | tr -d '\r\n')
+        case $id in
+            *+dirty) id="${id%+dirty}d$(sha256sum "$1" | head -c 16)" ;;
+        esac
     else
-        sha256sum "$1" | head -c 16
+        id=$(sha256sum "$1" | head -c 16)
     fi
+    id=$(printf '%s' "$id" | tr -c '0-9a-zA-Z._-' '_' | head -c 16)
+    printf '%-16s' "$id" | tr ' ' '_'
 }
 
 python3 -I - "$BIN" "$TMP/archive.bin" <<'PY'
@@ -82,6 +93,7 @@ Super Monkey Ball 2 (PC port) - single-file version
 
 SMB2.exe is the whole game in one file. You need your own copy of the game disc image
 (Super Monkey Ball 2, USA / GM2E8P) as .iso, .gcm or .rvz. It is not included.
+RVZ files must use zstd (Dolphin default) or no compression; others: re-convert in Dolphin.
 
 Use
   1. Put SMB2.exe anywhere (Desktop, a USB stick, ...) and double-click it.

@@ -5,7 +5,7 @@ SMB2 is an unofficial, non-commercial PC port of Super Monkey Ball 2 for the
 Nintendo GameCube. It is not affiliated with SEGA or Nintendo.
 
 You need your own Super Monkey Ball 2 GameCube disc image (USA, disc ID GM2E8P,
-.iso or .gcm). No game content is included with this program.
+.iso, .gcm or .rvz). No game content is included with this program. RVZ files must use zstd (Dolphin default) or no compression; others need re-converting in Dolphin.
 Modded disc images work if the mod replaces game files (stages, textures,
 sounds); code mods (DOL edits, Gecko/AR codes) don't apply.
 

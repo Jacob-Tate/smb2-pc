@@ -189,6 +189,19 @@ add_library(smb2_zstd STATIC ${CMAKE_SOURCE_DIR}/third_party/zstd/zstddeclib.c)
 target_compile_options(smb2_zstd PRIVATE -w)
 target_link_libraries(smb2_pc_port smb2_zstd)
 
+# Build id (F2): custom target re-runs every build, build_id_gen.h only changes
+# when HEAD / dirtiness changes, so only build_id.c recompiles.
+set(SMB2_BUILD_ID_DIR ${CMAKE_BINARY_DIR}/gen)
+add_custom_target(smb2_build_id_gen
+    BYPRODUCTS ${SMB2_BUILD_ID_DIR}/build_id_gen.h ${SMB2_BUILD_ID_DIR}/build_id.txt
+    COMMAND ${CMAKE_COMMAND} -DSRC_DIR=${CMAKE_SOURCE_DIR} -DOUT_DIR=${SMB2_BUILD_ID_DIR}
+            -P ${CMAKE_SOURCE_DIR}/cmake/build_id.cmake
+    COMMENT "Generating build id" VERBATIM)
+add_library(smb2_buildid STATIC ${CMAKE_SOURCE_DIR}/src/platform/build_id.c)
+target_include_directories(smb2_buildid PRIVATE ${CMAKE_SOURCE_DIR}/include ${SMB2_BUILD_ID_DIR})
+add_dependencies(smb2_buildid smb2_build_id_gen)
+target_link_libraries(smb2_pc_port smb2_buildid)
+
 # Deterministic libm/rand/qsort for game code (docs/detmath.md): fdlibm +
 # the GC MSL's rand/qsort, so every compiler/CRT/CPU gets the same bits.
 # include/pc_detmath.h maps the game's calls to it.
@@ -404,6 +417,7 @@ if(SMB2_GAME)
     target_link_libraries(smb2_game smb2_shim)
     target_link_libraries(smb2_shim smb2_game)
     target_link_libraries(smb2_pc_port smb2_game)
+    target_link_libraries(smb2_game smb2_buildid)
 
     target_compile_definitions(smb2_pc_port PRIVATE SMB2_LINK_GAME)
 

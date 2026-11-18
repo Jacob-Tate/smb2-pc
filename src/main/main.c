@@ -10,6 +10,7 @@
 #include <time.h>
 #include "install_mode.h"
 #include "pc_update.h"
+#include "build_id.h"
 #include "pc_card.h"
 #include "netplay/session.h"
 #include <SDL3/SDL.h>
@@ -158,10 +159,16 @@ int main(int argc, char* argv[]) {
             return iso ? gamedata_cli_extract(iso, gd, progress) : gamedata_cli_verify(ver, progress);
         }
     }
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "--version") == 0) {
+            printf("SMB2 PC port %s, build %s\n", pc_update_current_version(), smb2_build_id());
+            return 0;
+        }
     /* --list-controllers: diagnostic, no window (input_sdl2.c) */
     for (int i = 1; i < argc; i++)
         if (strcmp(argv[i], "--list-controllers") == 0)
             return input_print_controllers();
+    printf("SMB2 PC port %s, build %s\n", pc_update_current_version(), smb2_build_id());
     printf("DEBUG: main() started\n");
     fflush(stdout);
     printf("========================================\n");
@@ -251,7 +258,8 @@ int main(int argc, char* argv[]) {
             printf("  --language <l>    Game language: auto, en, de, fr, es, it or ja\n"
                    "                    (this run only; default: settings.dat, else auto)\n");
             printf("  --save-dir <dir>  Directory for settings.dat and saves\n");
-            printf("  --iso <file>      Game disc image (GM2E8P .iso/.gcm)\n");
+            printf("  --version         Print the version and build id, then exit\n");
+            printf("  --iso <file>      Game disc image (GM2E8P .iso/.gcm/.rvz)\n");
             printf("  --gamedata <dir>  Extracted game data folder (instead of an ISO)\n");
             printf("  --extract-iso <file> --gamedata <dir> [--progress]\n"
                    "                    Extract + verify the disc into <dir> (headless)\n");
@@ -369,13 +377,16 @@ int main(int argc, char* argv[]) {
     }
 
     /* Platform configuration */
+    char window_title[96];
+    snprintf(window_title, sizeof window_title, "Super Monkey Ball 2 – build %s (%s)",
+             smb2_build_number(), smb2_build_sha());
     PlatformConfig config = {
         .window_width = g_window_width,
         .window_height = g_window_height,
         .fullscreen = g_fullscreen,
         .vsync = g_vsync,
         .msaa_samples = g_msaa,
-        .window_title = "SMB2",
+        .window_title = window_title,
         .opengl = g_pcs.renderer != PCS_RENDERER_D3D12,
     };
 
