@@ -661,7 +661,7 @@ static void vpad_attach(int kind) {
     /* SDL drops joystick input while no window has focus (headless test
      * runs never get focus); the scripted pad has to be read anyway */
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    SDL_zero(desc);
+    SDL_INIT_INTERFACE(&desc);
     desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
     desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
     desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
@@ -1129,4 +1129,90 @@ int input_port_view(int port, PadStickView* v) {
     if (!input_port_connected(port)) return 0;
     *v = s_ports[port].view;
     return 1;
+}
+
+/* ---- --list-controllers (main.c): what does SDL see?  No window. ---- */
+static void lc_print_devices(void) {
+    int n = 0, i;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&n);
+    int valve = 0;
+    printf("Joysticks: %d\n", n);
+    for (i = 0; ids && i < n; i++) {
+        SDL_JoystickID id = ids[i];
+        char guid[64];
+        char* map = NULL;
+        const char* name = SDL_GetJoystickNameForID(id);
+        const char* path = SDL_GetJoystickPathForID(id);
+        int vid = SDL_GetJoystickVendorForID(id), pid = SDL_GetJoystickProductForID(id);
+        bool is_gp = SDL_IsGamepad(id);
+        SDL_GUIDToString(SDL_GetJoystickGUIDForID(id), guid, sizeof guid);
+        printf("\n[%d] instance id %u: \"%s\"\n", i, (unsigned)id, name ? name : "(no name)");
+        printf("    VID/PID      0x%04X / 0x%04X (version 0x%04X)%s\n", vid, pid,
+               SDL_GetJoystickProductVersionForID(id),
+               SDL_IsJoystickVirtual(id) ? " [virtual]" : "");
+        printf("    GUID         %s\n", guid);
+        printf("    path         %s\n", path ? path : "(none)");
+        printf("    joystick type %d\n", (int)SDL_GetJoystickTypeForID(id));
+        printf("    is gamepad   %s\n", is_gp ? "yes" : "no");
+        if (is_gp) {
+            int t = (int)SDL_GetGamepadTypeForID(id);
+            printf("    gamepad type %d (%s)\n", t, type_name(t));
+            map = SDL_GetGamepadMappingForID(id);
+        }
+        printf("    mapping      %s\n", map ? map : "none");
+        SDL_free(map);
+        if (vid == 0x28DE) valve = 1;
+    }
+    SDL_free(ids);
+    if (n == 0)
+        printf("\nSDL sees no joystick or controller devices. A controller that only does "
+               "keyboard/mouse emulation is not listed.\n");
+    else if (valve)
+        printf("\nValve device found (VID 0x28DE): SDL's HIDAPI driver handles it; if it is "
+               "listed as a gamepad above it will work in the game.\n");
+}
+
+int input_print_controllers(void) {
+    static const char* const hints[] = {
+        SDL_HINT_JOYSTICK_HIDAPI, SDL_HINT_JOYSTICK_HIDAPI_STEAM, SDL_HINT_JOYSTICK_RAWINPUT,
+        SDL_HINT_JOYSTICK_WGI, SDL_HINT_XINPUT_ENABLED, SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,
+    };
+    int v, i;
+    Uint64 t0;
+    SDL_Event ev;
+
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
+        printf("SDL_Init(VIDEO|GAMEPAD) failed: %s\n", SDL_GetError());
+        return 1;
+    }
+    v = SDL_GetVersion();
+    printf("SMB2 PC port --list-controllers\n");
+    printf("SDL version  compiled %d.%d.%d, runtime %d.%d.%d (%s)\n",
+           SDL_MAJOR_VERSION, SDL_MINOR_VERSION, SDL_MICRO_VERSION,
+           SDL_VERSIONNUM_MAJOR(v), SDL_VERSIONNUM_MINOR(v), SDL_VERSIONNUM_MICRO(v),
+           SDL_GetRevision());
+    printf("Platform     %s\n", SDL_GetPlatform());
+    printf("Hints       ");
+    for (i = 0; i < (int)(sizeof hints / sizeof hints[0]); i++) {
+        const char* h = SDL_GetHint(hints[i]);
+        printf(" %s=%s", hints[i], h ? h : "(default)");
+    }
+    printf("\n");
+    SDL_AddGamepadMappingsFromFile("gamecontrollerdb.txt");
+    printf("Waiting 1 s for late devices ...\n");
+    fflush(stdout);
+    t0 = SDL_GetTicks();
+    while (SDL_GetTicks() - t0 < 1000) {
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_EVENT_JOYSTICK_ADDED)
+                printf("  event: joystick added (instance %u)\n", (unsigned)ev.jdevice.which);
+            else if (ev.type == SDL_EVENT_GAMEPAD_ADDED)
+                printf("  event: gamepad added (instance %u)\n", (unsigned)ev.gdevice.which);
+        }
+        SDL_Delay(10);
+    }
+    lc_print_devices();
+    fflush(stdout);
+    SDL_Quit();
+    return 0;
 }

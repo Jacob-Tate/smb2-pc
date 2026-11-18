@@ -120,6 +120,10 @@ int main(int argc, char* argv[]) {
             return iso ? gamedata_cli_extract(iso, gd, progress) : gamedata_cli_verify(ver, progress);
         }
     }
+    /* --list-controllers: diagnostic, no window (input_sdl2.c) */
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "--list-controllers") == 0)
+            return input_print_controllers();
     printf("DEBUG: main() started\n");
     fflush(stdout);
     printf("========================================\n");
@@ -217,6 +221,8 @@ int main(int argc, char* argv[]) {
             printf("  --audio-null      Run audio without an output device\n");
             printf("  --button-style <s> Button prompts: auto, gc, ps, ps4, ps5, xbox or switch\n"
                    "                    (this run only)\n");
+            printf("  --list-controllers Print every joystick / gamepad SDL sees (name, VID/PID,\n"
+                   "                    GUID, mapping), wait 1 s for late devices, then exit\n");
             printf("  --perf            Print frame timing / GL counters every 300 frames\n");
             printf("  --help, -h        Show this help\n");
             return 0;

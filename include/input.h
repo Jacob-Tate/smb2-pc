@@ -64,6 +64,8 @@ void merge_inputs(void);
 /* Platform-specific: called from platform layer when events arrive */
 /* Pad hot-plugging: SDL joystick instance id of a new joystick / gamepad and of
  * a removed one (platform_sdl2.c event loop). */
+/* --list-controllers (main.c): print every joystick SDL sees, no window; returns the exit code */
+int input_print_controllers(void);
 void input_on_device_added(unsigned int instance_id);
 void input_on_device_removed(unsigned int instance_id);
 void input_on_key_down(int keycode);
