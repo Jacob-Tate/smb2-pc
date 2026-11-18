@@ -70,6 +70,7 @@ static long g_max_frames_arg = 0;             /* --max-frames <n>: stop after n 
 static int g_checksum_ring_arg = 0;           /* --checksum-ring */
 static NetplayOptions g_net_opt = { NULL, NULL, 0, NULL, -1, 0, NULL, 0 };  /* --server ... (E6) */
 static const char* g_lobby_script_arg = NULL;  /* --lobby-test-script (E8) */
+static const char* g_ovl_online_script_arg = NULL;  /* --overlay-test-online-script (E7) */
 static const char* g_np_resume_arg = NULL;      /* --np-resume CODE,ID,TOKEN: restarted into a session (E8) */
 static const char* g_np_notice_arg = NULL;      /* --np-notice <text>: toast after a restart */
 static unsigned long g_np_wait_pid_arg = 0;     /* --np-wait-pid: wait for the old process */
@@ -281,6 +282,12 @@ int main(int argc, char* argv[]) {
             g_net_opt.lobby_timeout_s = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--lobby-test-script") == 0 && i + 1 < argc) {
             g_lobby_script_arg = argv[++i];
+        } else if (strcmp(argv[i], "--overlay-test-online-script") == 0 && i + 1 < argc) {
+            g_ovl_online_script_arg = argv[++i];   /* E7: drives the overlay Online tab actions */
+            if (!overlay_test_online_script(g_ovl_online_script_arg)) {
+                fprintf(stderr, "bad --overlay-test-online-script (see docs/handoff/E7.md)\n");
+                return 1;
+            }
         } else if (strcmp(argv[i], "--np-resume") == 0 && i + 1 < argc) {
             g_np_resume_arg = argv[++i];
         } else if (strcmp(argv[i], "--np-notice") == 0 && i + 1 < argc) {
@@ -391,8 +398,8 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "bad --np-resume (expected CODE,ID,TOKEN)\n");
         return 1;
     }
-    if (g_lobby_script_arg) {
-        if (!netplay_set_lobby_script(g_lobby_script_arg)) {
+    if (g_lobby_script_arg || g_ovl_online_script_arg) {   /* E7: the overlay script behaves like the lobby script */
+        if (g_lobby_script_arg && !netplay_set_lobby_script(g_lobby_script_arg)) {
             fprintf(stderr, "bad --lobby-test-script (see docs/handoff/E8.md)\n");
             return 1;
         }

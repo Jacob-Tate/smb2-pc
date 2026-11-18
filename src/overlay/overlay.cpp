@@ -15,6 +15,10 @@
 #include "pc_settings.h"
 
 extern "C" long g_dbg_frame_counter;   // swapped frames (platform_sdl2.c)
+extern "C" int main_mode, sub_mode;    // game mode (decomp globals): title screen detection for the hint
+#include "netplay/netplay.h"
+extern "C" int main_mode, sub_mode;       // game mode (decomp globals): title screen detection for the hint
+#include "netplay/netplay.h"
 // render_d3d12.c: device / queue / frames in flight for the DX12 backend
 extern "C" bool gx_d3d12_overlay_handles(void** device, void** queue, int* frames_in_flight);
 
@@ -70,9 +74,14 @@ void prune_toasts() {
     s_ntoasts = j;
 }
 
+// E7: "F1 / Back+Start: Online" hint on the title screen (MD_ADV, SMD_ADV_TITLE_MAIN), offline and menu closed
+bool title_hint_visible() {
+    return !s_open && main_mode == 0 && sub_mode == 20 && !netplay_active();
+}
+
 bool hud_visible() {
     prune_toasts();
-    return s_ntoasts > 0 || g_pcs.show_fps > 0;
+    return s_ntoasts > 0 || g_pcs.show_fps > 0 || title_hint_visible();
 }
 
 ImU32 with_alpha(ImU32 c, float a) {
@@ -102,6 +111,14 @@ void draw_hud() {
         dl->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), kEdge, rounding * 0.6f, 0, 1.0f);
         dl->AddText(ImVec2(x + padx, y + pady), kTxt, buf);
         if (c == 2) fps_bottom_tr = y + h;
+    }
+    if (title_hint_visible()) {   // small, bottom centre
+        const char* hint = "F1 / Back+Start: Online";
+        const ImVec2 ts = ImGui::CalcTextSize(hint);
+        const float px = 14 * s, py = 6 * s;
+        const float x = (io.DisplaySize.x - ts.x) * 0.5f - px, y = io.DisplaySize.y - 28 * s - ts.y - py * 2;
+        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + ts.x + px * 2, y + ts.y + py * 2), IM_COL32(37, 59, 156, 170), rounding * 0.6f);
+        dl->AddText(ImVec2(x + px, y + py), IM_COL32(0xE0, 0xDB, 0xC8, 220), hint);
     }
     // toasts: top right, stacked downwards (oldest on top), under the FPS box when that sits there
     static const ImU32 kType[4] = {                  // info, success, warning, error
@@ -240,6 +257,7 @@ bool overlay_process_event(const SDL_Event* e) {
 
 // Once per platform_poll_events: controller chord (Back + Start held 0.5 s) and mouse cursor.
 void overlay_poll_tick(void) {
+    if (s_ready) ovl::online_tick();   // E7: lobby events -> toasts (also while closed), online test script
     const Uint64 now = SDL_GetTicks();
     const bool both = chord_buttons_down();
     if (!both) { s_chord_since = 0; s_chord_fired = false; }
@@ -362,6 +380,8 @@ void overlay_test_open_at_start(void) {
     s_start_open = true;
     if (s_ready) overlay_set_open(true);
 }
+
+bool overlay_test_online_script(const char* spec) { return ovl::online_script_set(spec); }
 
 void overlay_test_open_frames(long from, long to) { s_open_from = from; s_open_to = to; }
 

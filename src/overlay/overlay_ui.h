@@ -41,5 +41,35 @@ bool button_row(const char* label, const char* value, const char* help, bool ena
 void info_row(const char* label, const char* value, const char* help);
 // Right-pane text for the current row (copied); the row helpers call this.
 void set_help(const char* title, const char* text);
+// Adjustable row with a free value text (E7): A / click / Right = +1, Left / right click = -1.
+// Returns 0 when nothing happened, else the step (+1 / -1).
+int stepper_row(const char* label, const char* value, const char* help, bool enabled = true);
+// Like button_row but the value can be drawn gold (highlight, e.g. "you") (E7).
+bool action_row(const char* label, const char* value, const char* help, bool enabled = true, bool gold = false);
+// Editable text row (E7): shows `buf`; A / click / Enter starts editing with the keyboard (typing, Ctrl+V paste;
+// Enter or B/Esc ends).  `upper_code`: letters/digits only, upper-cased (room codes).  Returns true when the
+// value was changed and the edit finished.
+bool text_row(const char* label, char* buf, int cap, const char* help, bool upper_code = false);
+// True while the text row `label` is being edited (the shell then skips tab-wide hotkeys).
+bool text_editing();
+// E7: true while the online lobby is joined or a session runs: modal screens and sim-affecting settings are disabled
+// (tab_online.cpp).
+bool online_locked();
+
+// ---- online actions (tab_online.cpp): the buttons AND the test script call these ----
+void online_connect();                // connects with the server / name fields (saves them in settings.dat)
+void online_disconnect();
+void online_host();                   // create a room (delay from the Input delay row)
+void online_join();                   // join the room whose code is in the Room code field
+void online_pick_port(int port);      // 0..3
+void online_start();                  // host
+void online_leave_room();
+void online_leave_session();          // deferred to the next online_tick (never from inside an ImGui frame)
+void online_step_delay(int step);     // Input delay row: auto, 2..12 frames
+void online_code_letter(int i, int step);   // gamepad letter picker of the Room code
+void online_set_code(const char* code);
+void online_set_server_name(const char* server, const char* name);
+bool online_script_set(const char* spec);   // --overlay-test-online-script
+void online_tick();                   // once per platform_poll_events: lobby events -> toasts, test script
 
 }  // namespace ovl

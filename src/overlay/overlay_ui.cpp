@@ -370,4 +370,67 @@ void info_row(const char* label, const char* value, const char* help) {
     row_core(label, value, true, false, false, help);
 }
 
+
+// ---------------------------------------------------------------- E7 rows
+int stepper_row(const char* label, const char* value, const char* help, bool enabled) {
+    RowOut r = row_core(label, value, enabled, true, false, help);
+    return r.activated ? r.step : 0;
+}
+
+bool action_row(const char* label, const char* value, const char* help, bool enabled, bool gold) {
+    RowOut r = row_core(label, value, enabled, false, gold, help);
+    return r.activated && r.step > 0;
+}
+
+namespace {
+ImGuiID s_edit_id;        // text row being edited (0 = none)
+bool s_edit_start;        // first frame of an edit: grab the keyboard focus
+int s_edit_age;
+ImGuiID s_refocus_id;     // after an edit ends: give the row's nav focus back
+
+int code_filter(ImGuiInputTextCallbackData* d) {
+    ImWchar c = d->EventChar;
+    if (c >= 'a' && c <= 'z') c = (ImWchar)(c - 32);
+    if (c < 'A' || c > 'Z') return 1;
+    d->EventChar = c;
+    return 0;
+}
+}  // namespace
+
+bool text_editing() { return s_edit_id != 0; }
+
+bool text_row(const char* label, char* buf, int cap, const char* help, bool upper_code) {
+    bool changed = false;
+    ImGui::PushID(label);
+    const ImGuiID id = ImGui::GetID("##txt");
+    if (s_edit_id != id) {
+        if (s_refocus_id == id) { ImGui::SetKeyboardFocusHere(); s_refocus_id = 0; }
+        RowOut r = row_core(label, buf[0] ? buf : "(empty)", true, false, false, help);
+        if (r.activated && r.step > 0) { s_edit_id = id; s_edit_start = true; s_edit_age = 0; }
+    } else {
+        const float h = em() * 1.85f;
+        const float w = ImGui::GetContentRegionAvail().x;
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddText(ImVec2(p.x + em() * 0.8f, p.y + (h - em()) * 0.5f), kText, label);
+        ImGui::SetCursorScreenPos(ImVec2(p.x + w * 0.38f, p.y + (h - ImGui::GetFrameHeight()) * 0.5f));
+        ImGui::SetNextItemWidth(w * 0.60f);
+        if (s_edit_start) { ImGui::SetKeyboardFocusHere(); s_edit_start = false; }
+        ImGuiInputTextFlags fl = ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll;
+        if (upper_code) fl |= ImGuiInputTextFlags_CallbackCharFilter;
+        const bool entered = ImGui::InputText("##edit", buf, (size_t)cap, fl, upper_code ? code_filter : nullptr);
+        const bool deact = ImGui::IsItemDeactivated();
+        ImGui::SetCursorScreenPos(p);
+        ImGui::Dummy(ImVec2(w, h));
+        set_help(label, help);
+        s_edit_age++;
+        if (entered || (deact && s_edit_age > 2)) {
+            s_edit_id = 0;
+            s_refocus_id = id;
+            changed = true;
+        }
+    }
+    ImGui::PopID();
+    return changed;
+}
 }  // namespace ovl

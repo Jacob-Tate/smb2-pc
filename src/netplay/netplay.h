@@ -76,6 +76,7 @@ typedef struct NetplayRoomInfo {
     int self_id, host_id;
     int self_is_host;
     int self_port;           /* -1 if none */
+    int in_game;             /* 1 while the lockstep session runs (E7: netplay_lobby_room also answers then; delay = the session delay) */
     int delay;               /* input delay the host will start with (-1 = auto) */
     int suggested_delay;     /* from the pings */
 } NetplayRoomInfo;
@@ -146,6 +147,8 @@ int netplay_begin(void);
 int netplay_active(void);
 /* Input delay of the running session (polls). */
 int netplay_input_delay(void);
+/* E7: leave the running session: tells the server and restarts into offline play (exits in automated runs). */
+void netplay_session_leave(void);
 /* Leave the room and close the connection (also registered with atexit). */
 void netplay_shutdown(void);
 

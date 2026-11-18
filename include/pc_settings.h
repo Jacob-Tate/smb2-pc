@@ -40,6 +40,8 @@ typedef struct {
     long long update_last;   /* time() of the last completed update check, 0 = never */
     char update_skip[32];    /* release the user chose "Skip this version" for */
     char iso_path[1024];
+    char np_server[96];      /* online: relay server "host[:port]" (E7); empty = default */
+    char np_name[32];        /* online: player name (E7); empty = default */
 } PcSettings;
 
 /* Effective settings (saved file + command-line overrides). */
@@ -58,6 +60,7 @@ void pcs_load(void);
 void pcs_save(void);
 void pcs_cli_override(int which, const PcSettings* v);
 void pcs_set_iso_path(const char* path); /* + save */
+void pcs_set_netplay(const char* server, const char* name);   /* online lobby (E7): remembered server + name, + save */
 
 /* After window + renderer creation: enter exclusive fullscreen if chosen,
  * size the renderer to the drawable, set the master volume. */
