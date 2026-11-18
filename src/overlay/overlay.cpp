@@ -74,9 +74,9 @@ void prune_toasts() {
     s_ntoasts = j;
 }
 
-// E7: "F1 / Back+Start: Online" hint on the title screen (MD_ADV, SMD_ADV_TITLE_MAIN), offline and menu closed
+// E7: "F1 / Back+Start: Online" hint on the title screen (main_mode 0 / sub_mode 8, observed: "PRESS START" screen), offline and menu closed
 bool title_hint_visible() {
-    return !s_open && main_mode == 0 && sub_mode == 20 && !netplay_active();
+    return !s_open && main_mode == 0 && sub_mode == 8 && !netplay_active();
 }
 
 bool hud_visible() {

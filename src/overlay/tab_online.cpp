@@ -21,6 +21,9 @@ extern "C" {
 #include "netplay/netplay.h"
 }
 
+extern "C" long g_dbg_frame_counter;
+extern "C" void platform_set_dump_ranges(const char* spec);
+
 namespace ovl {
 
 namespace {
@@ -112,7 +115,8 @@ void port_rows(const NetplayRoomInfo& ri, bool pick) {
                 "Press to take this port if it is free.", port + 1);
         else
             snprintf(help, sizeof help, "Controller port %d and who plays on it.", port + 1);
-        if (action_row(label, value, help, pick && (!who || !who->is_self), gold) && pick) online_pick_port(port);
+        if (!pick) info_row(label, value, help);
+        else if (action_row(label, value, help, !who || !who->is_self, gold)) online_pick_port(port);
     }
     for (int i = 0; i < ri.count; i++) {
         if (ri.players[i].port >= 0) continue;
@@ -375,6 +379,27 @@ static void script_run() {
             online_disconnect();
         } else if (!strcmp(st.verb, "leave_session")) {
             online_leave_session();
+        } else if (!strcmp(st.verb, "wait")) {   // block the following steps for N ticks from now
+            static long s_wait_until = -1;
+            if (s_wait_until < 0) s_wait_until = s_script_tick + atol(st.arg);
+            if (s_script_tick < s_wait_until) return;
+            s_wait_until = -1;
+        } else if (!strcmp(st.verb, "players")) {   // block until the room has at least N players
+            if (!in_room || ri.count < atoi(st.arg)) return;
+        } else if (!strcmp(st.verb, "open")) {
+            overlay_test_open_frames(-1, -1);   // the script owns the overlay now (cancels --overlay-open-frames)
+            overlay_set_open(true);
+        } else if (!strcmp(st.verb, "close")) {
+            overlay_test_open_frames(-1, -1);
+            overlay_set_open(false);
+        } else if (!strcmp(st.verb, "tab")) {
+            select_tab(st.arg);
+        } else if (!strcmp(st.verb, "dump")) {   // frame dump (with the overlay) of a frame a few swaps from now: frame_NNNNN.ppm in the cwd
+            const long f = g_dbg_frame_counter + 4;
+            char spec[32];
+            snprintf(spec, sizeof spec, "%ld-%ld", f, f);
+            platform_set_dump_ranges(spec);
+            printf("[overlay-test-online] dump '%s' = frame %ld\n", st.arg, f);
         } else {
             fprintf(stderr, "[overlay-test-online] unknown step '%s'\n", st.verb);
         }
