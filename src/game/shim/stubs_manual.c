@@ -109,9 +109,81 @@ static LONG WINAPI shim_crash_filter(EXCEPTION_POINTERS *ep)
     return EXCEPTION_EXECUTE_HANDLER; /* terminate */
 }
 
+#ifdef _WIN64
+/* ---- PowerPC integer divide-by-zero semantics (docs/x64.md, X1) ----
+ * On the GameCube divw/divwu by zero does not trap: the quotient is
+ * undefined (hardware: -1 for a negative dividend else 0) and MWCC computes
+ * a % b as a - (a / b) * b, which is the dividend whatever the quotient was.
+ * x86 idiv/div traps (0xC0000094), so game code that divides by zero
+ * (Mode Select's cursor code on entry-less screens, sel_ngc.c fn_3_32E0)
+ * would kill the process.  This vectored handler decodes the faulting
+ * F6/F7 /6 /7 instruction, stores quotient = 0 (or -1 for a negative signed
+ * dividend) and remainder = dividend, and resumes after it.  Deterministic:
+ * the result depends only on the operands.  Anything it cannot decode falls
+ * through to the crash filter. */
+static volatile LONG s_div0_count;
+static LONG CALLBACK shim_div0_handler(EXCEPTION_POINTERS *ep)
+{
+    CONTEXT *c = ep->ContextRecord;
+    const unsigned char *p = (const unsigned char *)(uintptr_t)c->Rip;
+    int opsz = 32, rex = 0, sgn, len, mod, rm, n;
+    uint64_t a, q, r, mask;
+
+    if (ep->ExceptionRecord->ExceptionCode != 0xC0000094)
+        return EXCEPTION_CONTINUE_SEARCH;
+    for (n = 0; n < 4; n++) {             /* legacy prefixes */
+        if (*p == 0x66) opsz = 16;
+        else if (*p != 0x67 && *p != 0xF2 && *p != 0xF3 && *p != 0x2E &&
+                 *p != 0x3E && *p != 0x26 && *p != 0x36 && *p != 0x64 && *p != 0x65)
+            break;
+        p++;
+    }
+    if ((*p & 0xF0) == 0x40) {
+        rex = *p++;
+        if (rex & 8) opsz = 64;
+    }
+    if ((*p != 0xF6 && *p != 0xF7) || ((p[1] >> 3) & 7) < 6)
+        return EXCEPTION_CONTINUE_SEARCH;
+    if (*p == 0xF6) opsz = 8;
+    sgn = ((p[1] >> 3) & 7) == 7;
+    mod = p[1] >> 6; rm = p[1] & 7;
+    len = 2;                              /* opcode + modrm */
+    if (mod != 3) {
+        if (rm == 4) { len++; if (mod == 0 && (p[2] & 7) == 5) len += 4; }
+        if (mod == 0 && rm == 5) len += 4;
+        else if (mod == 1) len += 1;
+        else if (mod == 2) len += 4;
+    }
+    len += (int)(p - (const unsigned char *)(uintptr_t)c->Rip);
+
+    mask = opsz == 64 ? ~0ull : ((1ull << opsz) - 1);
+    a = (opsz == 8 ? c->Rax & 0xFF : c->Rax) & mask;
+    q = (sgn && (a >> (opsz - 1)) & 1) ? mask : 0;
+    r = a;
+    if (opsz == 8) {                      /* AL = quotient, AH = remainder */
+        c->Rax = (c->Rax & ~0xFFFFull) | (q & 0xFF) | ((r & 0xFF) << 8);
+    } else if (opsz == 16) {
+        c->Rax = (c->Rax & ~0xFFFFull) | q;
+        c->Rdx = (c->Rdx & ~0xFFFFull) | r;
+    } else {                              /* 32-bit ops zero-extend */
+        c->Rax = q;
+        c->Rdx = r;
+    }
+    c->Rip += len;
+    if (InterlockedIncrement(&s_div0_count) <= 8)
+        fprintf(stderr, "[ppc-div0] %s divide by zero at %p (dividend %lld, %d-bit): "
+                "PPC result q=%lld r=dividend, resumed\n", sgn ? "signed" : "unsigned",
+                (void *)(uintptr_t)(c->Rip - len), (long long)a, opsz, (long long)q);
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+#endif
+
 void shim_install_crash_handler(void)
 {
     SetUnhandledExceptionFilter(shim_crash_filter);
+#ifdef _WIN64
+    AddVectoredExceptionHandler(1, shim_div0_handler);
+#endif
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
 }
