@@ -61,6 +61,8 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E9 | Disconnect → CPU/neutral pad, desync handling | E6 | netplay | TODO |
 | E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
+| F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | IN PROGRESS (task/F1, 2026-11-17) |
+| F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | TODO (after C2c) |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
@@ -624,6 +626,32 @@ Candidate fixes (choose from C1's results; likely several):
   full-size. Rendering only; simulation unchanged (must not alter checksums: run E4 again).
 
 ---
+
+## 6b. Phase F: distribution and build identity (requested by the user 2026-11-17)
+
+### F1 Friend build (self-extracting single exe)
+- **Model**: partyboard `platforms/windows/launcher/launcher.cpp` + `launcher.rc.in` + `tools/package_friends.py`
+  (read-only reference). Small launcher exe with the whole build (exe + `assets/` + anything else in `build64/bin`,
+  no disc image, no pdb) appended as an LZMS archive (Windows Compression API, `compressapi.h`, `-lcabinet`;
+  available in MinGW). On start: unpack once to `%LOCALAPPDATA%\SMB2\builds\<build id>\`, run the game from there
+  with the same command line, delete older unpacked builds that aren't running.
+- **Saves must survive updates**: the unpacked folder is per build, so the launcher passes
+  `--save-dir %APPDATA%\SMB2\friend\` (settings.dat, remembered disc path and the memory card live there) unless the
+  user passes their own `--save-dir`.
+- **Shift held at start, or `--uninstall`**: confirmation dialog, then delete `%LOCALAPPDATA%\SMB2\builds\`,
+  `%APPDATA%\SMB2\friend\` and other dirs the game creates for this mode; never touch the installer's
+  `%APPDATA%\SMB2\installed\` or the portable `%APPDATA%\SMB2\smb2_pc_port\` (say so in the dialog).
+- Cross-compiled in WSL like the game (x64 llvm-mingw; C++ is fine for the launcher). Packaging script
+  `tools/package_friends.sh` (bash; Python only exists in WSL) → `build/package/friends/SMB2.exe` + `README.txt`.
+- Build id: until F2 exists, a hash of the archive; designed so F2's build id can replace it.
+
+### F2 Build number
+- A build number generated at configure/build time: `<git commit count on HEAD>-<short sha>[+dirty]`
+  (fallback when there's no git: timestamp). Exposed as `SMB2_BUILD_ID` (generated header, rebuilt when HEAD
+  changes; don't force a full rebuild of the game on every build).
+- Shown in: window title (`Super Monkey Ball 2 – build 123 (abc1234)`), first log line, the overlay (D5,
+  Interface tab), `--version`. Used as SessionConfig.buildId / HELLO build id (E6) so mismatched builds get a
+  clear "different build" error from the server instead of desyncing. F1's launcher uses the same id.
 
 ## 7. Definition of done (whole project)
 
