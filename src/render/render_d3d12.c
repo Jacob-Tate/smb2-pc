@@ -2221,7 +2221,7 @@ static int dx_read_frame(unsigned char** rgb, int* pw, int* ph) {
     if (!D.ok) return 0;
     tmp = (uint8_t*)malloc(n);
     if (!tmp) return 0;
-    if (overlay_is_open() && overlay_compose_for_dump()) D.read_override = D.ovl;
+    if (overlay_wants_draw() && overlay_compose_for_dump()) D.read_override = D.ovl;
     y = dx_read_pixels(0, 0, D.width, D.height, 0, tmp);
     D.read_override = NULL;
     if (!y) { free(tmp); return 0; }
@@ -2297,13 +2297,13 @@ static void dx_present(void) {
         ID3D12GraphicsCommandList_CopyResource(D.cl, bb, D.rt);
     }
     rt_to(D3D12_RESOURCE_STATE_RENDER_TARGET);
-    if (overlay_is_open()) {   /* Dear ImGui over the finished frame (D2) */
+    if (overlay_wants_draw()) {   /* Dear ImGui over the finished frame (D2): menu, FPS counter, toasts */
         barrier(bb, after_copy, D3D12_RESOURCE_STATE_RENDER_TARGET);
         draw_overlay(heap_cpu(D.rtv_heap, idx, D.rtv_inc));
         barrier(bb, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
     } else {
         barrier(bb, after_copy, D3D12_RESOURCE_STATE_PRESENT);
-        overlay_render();   /* closed: schedule hook only (--overlay-open-frames) */
+        overlay_render();   /* nothing visible: schedule hook only (--overlay-open-frames) */
     }
     if (D.q_ok) {
         ID3D12GraphicsCommandList_EndQuery(D.cl, D.qheap, D3D12_QUERY_TYPE_TIMESTAMP, (UINT)D.slot * 2 + 1);

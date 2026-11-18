@@ -883,14 +883,6 @@ void pcs_item_cancel(int item) {
     if (asp != g_pcs.aspect) pcs_on_window_resized();
 }
 
-/* --------------------------------------------------------------- overlay */
-static volatile int s_overlay_req;
-void pc_settings_overlay_request(void) { s_overlay_req = 1; }
-int pc_settings_overlay_take_request(void) {
-    int r = s_overlay_req;
-    s_overlay_req = 0;
-    return r;
-}
 
 /* ------------------------------------------------- choice API (overlay, D4) */
 /* A uniform "pick one of N" view of the menu items, used by the ImGui overlay

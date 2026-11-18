@@ -357,23 +357,13 @@ void video_finish_frame(void)
             s_hfr_skip = 1;   /* presented its own frames */
     }
     if (pc_session_active()) {
-        /* E1 D12: no modal local screens in a session (F1 overlay, Controller
+        /* E1 D12: no modal local screens in a session (Controller
          * Sticks, updater, Memory Card screen): they poll pads themselves and
          * stall the loop.  Pending requests are dropped. */
-        extern int pc_settings_overlay_take_request(void);
         extern int pc_stick_screen_take_request(void);
-        (void)pc_settings_overlay_take_request();
         (void)pc_stick_screen_take_request();
     } else {
-        /* F1: PC settings overlay (pc_settings_menu.c), modal over the
-         * finished-but-unpresented frame */
-        extern int pc_settings_overlay_take_request(void);
-        extern void pc_settings_overlay_run(void);
         extern int g_gx_presents_frames;
-        if (pc_settings_overlay_take_request() && g_gx_presents_frames) {
-            pc_settings_overlay_run();
-            s_hfr_skip = 1;   /* the overlay presented its own frames */
-        }
         /* Controller Sticks screen requested by the Options page */
         extern int pc_stick_screen_take_request(void);
         extern void pc_stick_screen_run(int captured);

@@ -47,6 +47,27 @@ void overlay_new_frame(void);
 void overlay_render(void);
 
 bool overlay_is_open(void);
+
+/* D5: true while the overlay is open OR something else it draws is visible (the FPS
+ * counter at the g_pcs.show_fps corner, toasts).  The renderers run their overlay draw
+ * path (overlay_render) whenever this is true; when false nothing is drawn and no ImGui
+ * frame is built.  overlay_is_open() stays "the menu is open". */
+bool overlay_wants_draw(void);
+
+/* D5: toast = small timed message stacked at the top right (partyboard look: blue
+ * panel, coloured upper-case heading, fades in and out).  Not thread safe: main
+ * thread only.  title/body are copied; body may be NULL.  Netplay (E7/E9) and
+ * controller hot-plug use it.  No-op before overlay_init. */
+typedef enum {
+    OVERLAY_TOAST_INFO = 0,
+    OVERLAY_TOAST_SUCCESS = 1,
+    OVERLAY_TOAST_WARNING = 2,
+    OVERLAY_TOAST_ERROR = 3,
+} OverlayToastType;
+void overlay_toast(int type /* OverlayToastType */, const char* title, const char* body);
+/* test hook --overlay-test-toast "FRAME:type:Title:Body" (repeatable, max 4): fires the
+ * toast when the swapped-frame counter reaches FRAME.  Spec must stay valid (argv). */
+void overlay_test_toast(const char* spec);
 void overlay_toggle(void);
 void overlay_set_open(bool open);
 /* true while the overlay wants mouse/keyboard (open and ImGui captured it) */

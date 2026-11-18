@@ -220,6 +220,8 @@ int main(int argc, char* argv[]) {
             overlay_test_open_at_start();
         } else if (strcmp(argv[i], "--overlay-test-set") == 0 && i + 1 < argc) {
             overlay_test_set(argv[++i]);   /* key=value, same setters as the overlay rows */
+        } else if (strcmp(argv[i], "--overlay-test-toast") == 0 && i + 1 < argc) {
+            overlay_test_toast(argv[++i]);   /* "FRAME:type:Title:Body" */
         } else if (strcmp(argv[i], "--overlay-test-online") == 0) {
             netplay_test_force_active(1);   /* test: overlay behaves as online (no pause) */
         } else if (strcmp(argv[i], "--overlay-open-frames") == 0 && i + 1 < argc) {
