@@ -69,6 +69,10 @@ static const char* g_checksum_log_arg = NULL; /* --checksum-log <file> (E3) */
 static long g_max_frames_arg = 0;             /* --max-frames <n>: stop after n input polls (E3) */
 static int g_checksum_ring_arg = 0;           /* --checksum-ring */
 static NetplayOptions g_net_opt = { NULL, NULL, 0, NULL, -1, 0, NULL, 0 };  /* --server ... (E6) */
+static const char* g_lobby_script_arg = NULL;  /* --lobby-test-script (E8) */
+static const char* g_np_resume_arg = NULL;      /* --np-resume CODE,ID,TOKEN: restarted into a session (E8) */
+static const char* g_np_notice_arg = NULL;      /* --np-notice <text>: toast after a restart */
+static unsigned long g_np_wait_pid_arg = 0;     /* --np-wait-pid: wait for the old process */
 
 /* Forward declarations from decompiled game (weak stubs for standalone build) */
 #if !defined(SMB2_LINK_GAME)
@@ -271,6 +275,16 @@ int main(int argc, char* argv[]) {
             g_net_opt.code_file = argv[++i];
         } else if (strcmp(argv[i], "--lobby-timeout") == 0 && i + 1 < argc) {
             g_net_opt.lobby_timeout_s = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--lobby-test-script") == 0 && i + 1 < argc) {
+            g_lobby_script_arg = argv[++i];
+        } else if (strcmp(argv[i], "--np-resume") == 0 && i + 1 < argc) {
+            g_np_resume_arg = argv[++i];
+        } else if (strcmp(argv[i], "--np-notice") == 0 && i + 1 < argc) {
+            g_np_notice_arg = argv[++i];
+        } else if (strcmp(argv[i], "--np-wait-pid") == 0 && i + 1 < argc) {
+            g_np_wait_pid_arg = strtoul(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--np-exit-file") == 0 && i + 1 < argc) {
+            netplay_set_exit_file(argv[++i]);
         } else if (strcmp(argv[i], "--checksum-ring") == 0) {
             g_checksum_ring_arg = 1;
         } else if (strcmp(argv[i], "--session-epoch") == 0 && i + 1 < argc) {
@@ -359,19 +373,42 @@ int main(int argc, char* argv[]) {
         g_session_epoch_given = g_session_locale_given = 0;
         g_det_session_arg = 2;   /* config already set */
     }
+    /* E8: in-game lobby support.  The restart after START_GAME carries --np-resume; --lobby-test-script drives
+     * the lobby API from the frame loop (test hook).  Flags that belong to the SESSION (recording, checksum log,
+     * input script, frame limit) are not applied in the offline lobby process of a test script: they stay in
+     * argv, so the restarted session process gets them. */
+    netplay_set_argv(argc, argv);
+    if (g_np_wait_pid_arg)
+        netplay_wait_for_parent(g_np_wait_pid_arg);
+    if (g_np_notice_arg)
+        netplay_push_notice(NP_EV_INFO, g_np_notice_arg);
+    netplay_set_automated(g_max_frames_arg > 0 || g_input_script_arg != NULL);
+    if (g_np_resume_arg && !netplay_set_resume(g_np_resume_arg)) {
+        fprintf(stderr, "bad --np-resume (expected CODE,ID,TOKEN)\n");
+        return 1;
+    }
+    if (g_lobby_script_arg) {
+        if (!netplay_set_lobby_script(g_lobby_script_arg)) {
+            fprintf(stderr, "bad --lobby-test-script (see docs/handoff/E8.md)\n");
+            return 1;
+        }
+        g_record_arg = NULL;
+        g_checksum_log_arg = NULL;
+        g_max_frames_arg = 0;
+        g_input_script_arg = NULL;
+        g_checksum_ring_arg = 0;
+        netplay_set_automated(0);
+    }
     if (g_net_opt.server) {
-        /* online (E6): the lobby decides the session config (epoch chosen by the server) */
-        SessionConfig nc;
+        /* online (E6/E8): the session starts with default settings now (no saves, in-memory card ...) and takes the
+         * room's config (epoch chosen by the server, disc hash) once the lobby is done, after the game data is
+         * known (below).  Without a restart: this process is fresh. */
         if (g_replay_arg) {
             fprintf(stderr, "--server and --replay cannot be combined\n");
             return 1;
         }
         netplay_set_options(&g_net_opt);
-        if (!netplay_lobby_run(&nc))
-            return 1;
-        g_session_cfg = nc;
-        g_session_epoch_given = g_session_locale_given = 0;
-        g_det_session_arg = 2;   /* config already set */
+        g_det_session_arg = 1;
     }
     if (g_record_arg)
         g_det_session_arg = g_det_session_arg ? g_det_session_arg : 1;
@@ -392,11 +429,9 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "invalid session config (locale must be 0..5)\n");
             return 1;
         }
-        if (g_record_arg && !inputsync_open_record(g_record_arg))
-            return 1;
+        if (g_record_arg && !g_net_opt.server && !inputsync_open_record(g_record_arg))
+            return 1;   /* online: opened after the lobby, the header carries the room's config */
         checksum_open_log(g_checksum_log_arg);
-        if (g_net_opt.server && !netplay_begin())
-            return 1;
         checksum_enable_ring(g_checksum_ring_arg);
         if (g_max_frames_arg > 0)
             inputsync_set_max_polls((uint64_t)g_max_frames_arg);
@@ -497,6 +532,25 @@ int main(int argc, char* argv[]) {
     if (!platform_resolve_game_data(g_gamedata_arg, g_iso_arg)) {
         pc_user_msg("No game data - exiting.\n");
         return 1;
+    }
+
+    if (g_net_opt.server) {
+        /* online: lobby (command line) or seat takeover after the restart (E8).  Needs the disc identity, so it
+         * runs once the game data is resolved; the process is fresh (no game code has run) so the session can
+         * simply take the room's config and start from poll 0. */
+        SessionConfig nc;
+        int ok = netplay_is_resume() ? netplay_lobby_resume(&nc) : netplay_lobby_run(&nc);
+        if (!ok)
+            return 1;
+        if (!pc_session_reconfigure(&nc)) {
+            fprintf(stderr, "invalid session config from the server\n");
+            return 1;
+        }
+        g_session_cfg = nc;
+        if (g_record_arg && !inputsync_open_record(g_record_arg))
+            return 1;
+        if (!netplay_begin())
+            return 1;
     }
 
     /* Initialize platform */

@@ -43,6 +43,10 @@ void pc_session_default_config(SessionConfig *cfg);
  * session is already active or the config is invalid (locale > 5). */
 int pc_session_begin(const SessionConfig *cfg);
 
+/* Replaces the config of the running session (E8: the online lobby's result, after the game data is known).
+ * Only before the first poll.  Returns 1 on success. */
+int pc_session_reconfigure(const SessionConfig *cfg);
+
 int pc_session_active(void);
 const SessionConfig *pc_session_config(void);   /* NULL when inactive */
 

@@ -82,6 +82,7 @@ int iso_path_to_index(ISOArchive* arc, const char* path);
 
 /* File listing */
 int iso_get_file_count(ISOArchive* arc);
+uint32_t iso_fst_crc32(ISOArchive* arc);   /* disc identity (netplay handshake); 0 if unknown */
 const ISOFileEntry* iso_get_file(ISOArchive* arc, int index);
 const ISOFileEntry* iso_find_file(ISOArchive* arc, const char* path);
 
