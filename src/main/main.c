@@ -12,7 +12,7 @@
 #include "pc_update.h"
 #include "pc_card.h"
 #include "netplay/session.h"
-#include <SDL2/SDL_hints.h>
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,11 +96,8 @@ void show_resolution_picker(void) {
 }
 
 int main(int argc, char* argv[]) {
-    /* Per-monitor DPI awareness must be declared before anything initialises
-     * SDL video (pc_settings sizes the default window early).  Without it,
-     * Windows display scaling (e.g. 150% on a 3840x2160 screen) presents a
-     * scaled 2560x1440 desktop and stretches our output back up. */
-    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+    /* SDL3 declares per-monitor-v2 DPI awareness itself when video initialises
+     * (SDL_HINT_WINDOWS_DPI_AWARENESS no longer exists), before any window is sized. */
 #ifdef SMB2_LINK_GAME
     extern void shim_install_crash_handler(void);
     extern void shim_start_watchdog(void);
@@ -161,6 +158,10 @@ int main(int argc, char* argv[]) {
             return iso ? gamedata_cli_extract(iso, gd, progress) : gamedata_cli_verify(ver, progress);
         }
     }
+    /* --list-controllers: diagnostic, no window (input_sdl2.c) */
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "--list-controllers") == 0)
+            return input_print_controllers();
     printf("DEBUG: main() started\n");
     fflush(stdout);
     printf("========================================\n");
@@ -270,6 +271,8 @@ int main(int argc, char* argv[]) {
                    "                    empty memory card with all party games unlocked, forced\n"
                    "                    locale/button style, no PC rows or dialogs\n"
                    "                    (--session-epoch <n>, --session-locale <0-5>)\n");
+            printf("  --list-controllers Print every joystick / gamepad SDL sees (name, VID/PID,\n"
+                   "                    GUID, mapping), wait 1 s for late devices, then exit\n");
             printf("  --perf            Print frame timing / GL counters every 300 frames\n");
             printf("  --help, -h        Show this help\n");
             return 0;

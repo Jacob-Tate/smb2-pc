@@ -11,7 +11,7 @@
 #include "render.h"
 #include "audio.h"
 #include "../render/gx_gpu.h"
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,26 +37,25 @@ void pc_game_set_wide_mode(int wide) { (void)wide; }
 
 static SDL_Window* cur_window(void) { return (SDL_Window*)platform_sdl_window(); }
 
-static int cur_display(void) {
+static SDL_DisplayID cur_display(void) {
     SDL_Window* w = cur_window();
-    int d = w ? SDL_GetWindowDisplayIndex(w) : 0;
-    return d < 0 ? 0 : d;
+    SDL_DisplayID d = w ? SDL_GetDisplayForWindow(w) : 0;
+    return d ? d : SDL_GetPrimaryDisplay();
 }
 
 /* ---------------------------------------------------------------- defaults */
 static void fit_default_size(int* w, int* h) {
     SDL_Rect ub;
     *w = 1280; *h = 720;
-    if (!SDL_WasInit(SDL_INIT_VIDEO) && SDL_InitSubSystem(SDL_INIT_VIDEO) < 0)
+    if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_InitSubSystem(SDL_INIT_VIDEO))
         return;
-    if (SDL_GetDisplayUsableBounds(0, &ub) != 0 || ub.w <= 0 || ub.h <= 0)
+    if (!SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &ub) || ub.w <= 0 || ub.h <= 0)
         return;
-    {   /* The process is per-monitor DPI aware (main.c), so sizes are real
-         * pixels: scale the default window by the display scaling (150% ->
-         * 1920x1080) so it isn't tiny on high-DPI screens. */
-        float ddpi = 0.0f;
-        if (SDL_GetDisplayDPI(0, &ddpi, NULL, NULL) == 0 && ddpi > 96.5f) {
-            float k = ddpi / 96.0f;
+    {   /* SDL3 is per-monitor DPI aware and window sizes are real pixels (no
+         * HIGH_PIXEL_DENSITY): scale the default window by the display content
+         * scale (150% -> 1920x1080) so it isn't tiny on high-DPI screens. */
+        float k = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+        if (k > 96.5f / 96.0f) {
             *w = (int)(1280 * k + 0.5f);
             *h = (int)(720 * k + 0.5f);
         }
@@ -380,14 +379,17 @@ void pcs_on_window_resized(void) {
 
 void pcs_apply_video(void) {
     SDL_Window* win = cur_window();
-    int disp = cur_display();
-    Uint32 flags;
+    SDL_DisplayID disp = cur_display();
+    SDL_WindowFlags flags;
     if (!win) return;
     flags = SDL_GetWindowFlags(win);
     switch (g_pcs.display_mode) {
     case PCS_WINDOWED: {
         int cw = 0, ch = 0;
-        if (flags & SDL_WINDOW_FULLSCREEN) SDL_SetWindowFullscreen(win, 0);
+        if (flags & SDL_WINDOW_FULLSCREEN) {
+            SDL_SetWindowFullscreen(win, false);
+            SDL_SyncWindow(win);   /* SDL3 leaves fullscreen asynchronously */
+        }
         SDL_GetWindowSize(win, &cw, &ch);
         if (cw != g_pcs.width || ch != g_pcs.height) {
             SDL_SetWindowSize(win, g_pcs.width, g_pcs.height);
@@ -396,20 +398,20 @@ void pcs_apply_video(void) {
         }
         break;
     }
-    case PCS_FULLSCREEN: {
-        SDL_DisplayMode want, got;
-        memset(&want, 0, sizeof want);
-        want.w = g_pcs.width;
-        want.h = g_pcs.height;
-        if (SDL_GetClosestDisplayMode(disp, &want, &got))
-            SDL_SetWindowDisplayMode(win, &got);
-        if ((flags & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP)
-            SDL_SetWindowFullscreen(win, 0);
-        SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN);
+    case PCS_FULLSCREEN: {   /* exclusive: closest mode to the settings size */
+        SDL_DisplayMode got;
+        if (SDL_GetClosestFullscreenDisplayMode(disp, g_pcs.width, g_pcs.height, 0.0f, false, &got))
+            SDL_SetWindowFullscreenMode(win, &got);
+        else
+            SDL_SetWindowFullscreenMode(win, NULL);
+        SDL_SetWindowFullscreen(win, true);
+        SDL_SyncWindow(win);
         break;
     }
-    case PCS_BORDERLESS:
-        SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    case PCS_BORDERLESS:     /* borderless desktop = fullscreen with no mode set */
+        SDL_SetWindowFullscreenMode(win, NULL);
+        SDL_SetWindowFullscreen(win, true);
+        SDL_SyncWindow(win);
         break;
     }
     render_set_vsync(g_pcs.vsync);
@@ -451,12 +453,13 @@ void pcs_apply_startup(void) {
  * the player's own choice, which then wins when the card loads. Automated
  * runs keep the GameCube default (4:3) so their captures stay comparable. */
 void pcs_first_run_aspect(int automated) {
-    SDL_DisplayMode dm;
+    const SDL_DisplayMode* dm;
     if (!s_first_run || automated) return;
-    if (SDL_GetDesktopDisplayMode(cur_display(), &dm) != 0 || dm.h <= 0) return;
-    if (dm.w * 2 >= dm.h * 3) {          /* aspect >= 1.5 */
+    dm = SDL_GetDesktopDisplayMode(cur_display());
+    if (!dm || dm->h <= 0) return;
+    if (dm->w * 2 >= dm->h * 3) {          /* aspect >= 1.5 */
         pc_game_set_wide_mode(1);
-        printf("[settings] first start: %dx%d desktop -> 16:9 TV mode\n", dm.w, dm.h);
+        printf("[settings] first start: %dx%d desktop -> 16:9 TV mode\n", dm->w, dm->h);
     }
 }
 
@@ -495,18 +498,19 @@ static void res_add(int w, int h) {
  * pixel formats collapse).  Windowed mode drops sizes that don't fit the
  * usable desktop area. */
 static void build_res_list(int mode) {
-    int disp = cur_display(), n, i;
+    SDL_DisplayID disp = cur_display();
+    int n = 0, i;
     SDL_Rect ub;
-    int have_ub = SDL_GetDisplayUsableBounds(disp, &ub) == 0;
+    int have_ub = SDL_GetDisplayUsableBounds(disp, &ub);
+    SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(disp, &n);
     s_nres = 0;
-    n = SDL_GetNumDisplayModes(disp);
-    for (i = 0; i < n; i++) {
-        SDL_DisplayMode m;
-        if (SDL_GetDisplayMode(disp, i, &m) != 0) continue;
-        if (m.w < 640 || m.h < 480) continue;
-        if (mode == PCS_WINDOWED && have_ub && (m.w > ub.w || m.h > ub.h)) continue;
-        res_add(m.w, m.h);
+    for (i = 0; modes && i < n; i++) {
+        const SDL_DisplayMode* m = modes[i];
+        if (m->w < 640 || m->h < 480) continue;
+        if (mode == PCS_WINDOWED && have_ub && (m->w > ub.w || m->h > ub.h)) continue;
+        res_add(m->w, m->h);
     }
+    SDL_free(modes);
     if (mode == PCS_WINDOWED) {
         static const Res extra[] = { {640, 480}, {960, 720}, {1280, 720}, {1600, 900} };
         for (i = 0; i < (int)(sizeof extra / sizeof extra[0]); i++)
@@ -667,9 +671,9 @@ const char* pcs_item_value(int item) {
                             g_pcs.display_mode == PCS_BORDERLESS ? s_tr_borderless : s_tr_windowed);
     case PCS_ITEM_RESOLUTION:
         if (g_pcs.display_mode == PCS_BORDERLESS) {
-            SDL_DisplayMode m;
-            if (SDL_GetDesktopDisplayMode(cur_display(), &m) == 0) {
-                snprintf(buf, sizeof buf, "%dx%d", m.w, m.h);
+            const SDL_DisplayMode* m = SDL_GetDesktopDisplayMode(cur_display());
+            if (m) {
+                snprintf(buf, sizeof buf, "%dx%d", m->w, m->h);
                 return buf;
             }
             return pc_text_pick(s_tr_desktop);

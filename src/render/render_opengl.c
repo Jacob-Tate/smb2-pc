@@ -1,8 +1,8 @@
 /* OpenGL 3.3 core backend for the GX emulation core (gx_core.c, gx_gpu.h) */
 #include "render.h"
 #include "gx_gpu.h"
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_opengl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -10,10 +10,13 @@
 #include "perf.h"
 #include "pc_settings.h"
 
+/* SDL3 returns an SDL_FunctionPointer; hand out void* like SDL2 did. */
+static void* gl_getproc(const char* name) { return (void*)(uintptr_t)SDL_GL_GetProcAddress(name); }
+
 /* OpenGL function pointer loading - use SDL's provided types from SDL_opengl_glext.h */
 /* Standards-compliant cast via uintptr_t to avoid "object pointer to function pointer" warnings */
 #define GL_LOAD_FUNC(func, type) do { \
-    void* _ptr = SDL_GL_GetProcAddress(#func); \
+    void* _ptr = gl_getproc(#func); \
     if (!_ptr) { \
         fprintf(stderr, "WARNING: Failed to load GL function: %s\n", #func); \
     } \
@@ -23,7 +26,7 @@
 /* For my_-prefixed pointers: ask the driver for the real GL name (#func + 3
  * skips "my_"); wglGetProcAddress returns NULL for unknown names. */
 #define GL_LOAD_FUNC_MY(func, type) do { \
-    void* _ptr = SDL_GL_GetProcAddress(#func + 3); \
+    void* _ptr = gl_getproc(#func + 3); \
     if (!_ptr) { \
         fprintf(stderr, "WARNING: Failed to load GL function: %s\n", #func + 3); \
     } \
@@ -746,16 +749,16 @@ static void ring_setup(GLBackend* gl) {
     s_ring_init = 1;
     s_ring_cap = gl->vertex_buffer_capacity / 16;
     s_glDrawElementsBaseVertex = (RING_PFNDRAWELEMENTSBASEVERTEX)(uintptr_t)
-        SDL_GL_GetProcAddress("glDrawElementsBaseVertex");
+        gl_getproc("glDrawElementsBaseVertex");
     if (!s_glDrawElementsBaseVertex) return;
     if (getenv("SMB2_NO_PERSISTENT_VBO") || !gl->rect_vbo ||
         !SDL_GL_ExtensionSupported("GL_ARB_buffer_storage"))
         return;
-    bs = (RING_PFNBUFFERSTORAGE)(uintptr_t)SDL_GL_GetProcAddress("glBufferStorage");
-    map = (RING_PFNMAPBUFFERRANGE)(uintptr_t)SDL_GL_GetProcAddress("glMapBufferRange");
-    s_glFenceSync = (RING_PFNFENCESYNC)(uintptr_t)SDL_GL_GetProcAddress("glFenceSync");
-    s_glClientWaitSync = (RING_PFNCLIENTWAITSYNC)(uintptr_t)SDL_GL_GetProcAddress("glClientWaitSync");
-    s_glDeleteSync = (RING_PFNDELETESYNC)(uintptr_t)SDL_GL_GetProcAddress("glDeleteSync");
+    bs = (RING_PFNBUFFERSTORAGE)(uintptr_t)gl_getproc("glBufferStorage");
+    map = (RING_PFNMAPBUFFERRANGE)(uintptr_t)gl_getproc("glMapBufferRange");
+    s_glFenceSync = (RING_PFNFENCESYNC)(uintptr_t)gl_getproc("glFenceSync");
+    s_glClientWaitSync = (RING_PFNCLIENTWAITSYNC)(uintptr_t)gl_getproc("glClientWaitSync");
+    s_glDeleteSync = (RING_PFNDELETESYNC)(uintptr_t)gl_getproc("glDeleteSync");
     if (!bs || !map || !s_glFenceSync || !s_glClientWaitSync || !s_glDeleteSync) return;
     my_glGenBuffers(1, &vbo);
     my_glGenBuffers(1, &rvbo);
@@ -892,7 +895,7 @@ static bool init_shaders(GLBackend* backend) {
         snprintf(name, sizeof(name), "u_texmatrix[%d]", i);
         s_u_texmatrix[i] = glGetUniformLocation(prog, name);
     }
-    gxfx_glUniform4iv = (GXFX_PFNUNIFORM4IV)(uintptr_t)SDL_GL_GetProcAddress("glUniform4iv");
+    gxfx_glUniform4iv = (GXFX_PFNUNIFORM4IV)(uintptr_t)gl_getproc("glUniform4iv");
     backend->u_mode = glGetUniformLocation(prog, "u_gx_mode");
     backend->u_nrm = glGetUniformLocation(prog, "u_gx_nrm");
     backend->u_chan = glGetUniformLocation(prog, "u_gx_chan");
@@ -1451,7 +1454,7 @@ static int glb_read_frame(unsigned char** rgb, int* pw, int* ph) {
     int w = 0, h = 0, y;
     size_t row;
     if (!win) return 0;
-    SDL_GL_GetDrawableSize(win, &w, &h);
+    SDL_GetWindowSizeInPixels(win, &w, &h);
     if (w <= 0 || h <= 0) return 0;
     row = (size_t)w * 3;
     if (!buf || buf_size < row * h) {   /* window can be resized */
@@ -1515,11 +1518,11 @@ static int glb_capture(void) {
     GLint prev_tex = 0;
     if (!gl) return 0;
     if (!p_blit) {
-        p_genfb = (PFN_pc_GenFramebuffers)SDL_GL_GetProcAddress("glGenFramebuffers");
-        p_bindfb = (PFN_pc_BindFramebuffer)SDL_GL_GetProcAddress("glBindFramebuffer");
-        p_fbtex = (PFN_pc_FramebufferTexture2D)SDL_GL_GetProcAddress("glFramebufferTexture2D");
-        p_fbstatus = (PFN_pc_CheckFramebufferStatus)SDL_GL_GetProcAddress("glCheckFramebufferStatus");
-        p_blit = (PFN_pc_BlitFramebuffer)SDL_GL_GetProcAddress("glBlitFramebuffer");
+        p_genfb = (PFN_pc_GenFramebuffers)gl_getproc("glGenFramebuffers");
+        p_bindfb = (PFN_pc_BindFramebuffer)gl_getproc("glBindFramebuffer");
+        p_fbtex = (PFN_pc_FramebufferTexture2D)gl_getproc("glFramebufferTexture2D");
+        p_fbstatus = (PFN_pc_CheckFramebufferStatus)gl_getproc("glCheckFramebufferStatus");
+        p_blit = (PFN_pc_BlitFramebuffer)gl_getproc("glBlitFramebuffer");
         if (!p_genfb || !p_bindfb || !p_fbtex || !p_fbstatus || !p_blit) { p_blit = NULL; return 0; }
     }
     if (!s_cap_fbo || s_cap_w != gl->width || s_cap_h != gl->height) {
@@ -1624,7 +1627,7 @@ static void glb_restore(float brightness) {
     {
         typedef void (APIENTRY *PFN_u1f)(GLint, GLfloat);
         static PFN_u1f p_u1f;
-        if (!p_u1f) p_u1f = (PFN_u1f)SDL_GL_GetProcAddress("glUniform1f");
+        if (!p_u1f) p_u1f = (PFN_u1f)gl_getproc("glUniform1f");
         if (p_u1f) p_u1f(s_cap_dim_loc, brightness);
     }
     glBindVertexArray(s_cap_vao);
@@ -1762,13 +1765,13 @@ static int pc_box_program(void) {
     GLint ok = 0;
     if (s_box_prog) return 1;
     if (s_box_failed || !pc_cap_program()) return 0;   /* its VAO */
-    p_drawbufs = (PFN_pc_DrawBuffers)SDL_GL_GetProcAddress("glDrawBuffers");
-    p_unmapbuf = (PFN_pc_UnmapBuffer)SDL_GL_GetProcAddress("glUnmapBuffer");
-    p_mapbufrange = (RING_PFNMAPBUFFERRANGE)SDL_GL_GetProcAddress("glMapBufferRange");
+    p_drawbufs = (PFN_pc_DrawBuffers)gl_getproc("glDrawBuffers");
+    p_unmapbuf = (PFN_pc_UnmapBuffer)gl_getproc("glUnmapBuffer");
+    p_mapbufrange = (RING_PFNMAPBUFFERRANGE)gl_getproc("glMapBufferRange");
     if (!s_glFenceSync) {
-        s_glFenceSync = (RING_PFNFENCESYNC)SDL_GL_GetProcAddress("glFenceSync");
-        s_glClientWaitSync = (RING_PFNCLIENTWAITSYNC)SDL_GL_GetProcAddress("glClientWaitSync");
-        s_glDeleteSync = (RING_PFNDELETESYNC)SDL_GL_GetProcAddress("glDeleteSync");
+        s_glFenceSync = (RING_PFNFENCESYNC)gl_getproc("glFenceSync");
+        s_glClientWaitSync = (RING_PFNCLIENTWAITSYNC)gl_getproc("glClientWaitSync");
+        s_glDeleteSync = (RING_PFNDELETESYNC)gl_getproc("glDeleteSync");
     }
     v = compile_shader(GL_VERTEX_SHADER, vs);
     f = compile_shader(GL_FRAGMENT_SHADER, fs);
@@ -1819,11 +1822,11 @@ static int box_begin(BoxSaved* sv, int dw, int dh) {
     GLBackend* gl = g_backend;
     if (!gl || dw <= 0 || dh <= 0 || dw > 4096 || dh > 4096) return 0;
     if (!p_blit) {   /* same entry points as the F1 capture */
-        p_genfb = (PFN_pc_GenFramebuffers)SDL_GL_GetProcAddress("glGenFramebuffers");
-        p_bindfb = (PFN_pc_BindFramebuffer)SDL_GL_GetProcAddress("glBindFramebuffer");
-        p_fbtex = (PFN_pc_FramebufferTexture2D)SDL_GL_GetProcAddress("glFramebufferTexture2D");
-        p_fbstatus = (PFN_pc_CheckFramebufferStatus)SDL_GL_GetProcAddress("glCheckFramebufferStatus");
-        p_blit = (PFN_pc_BlitFramebuffer)SDL_GL_GetProcAddress("glBlitFramebuffer");
+        p_genfb = (PFN_pc_GenFramebuffers)gl_getproc("glGenFramebuffers");
+        p_bindfb = (PFN_pc_BindFramebuffer)gl_getproc("glBindFramebuffer");
+        p_fbtex = (PFN_pc_FramebufferTexture2D)gl_getproc("glFramebufferTexture2D");
+        p_fbstatus = (PFN_pc_CheckFramebufferStatus)gl_getproc("glCheckFramebufferStatus");
+        p_blit = (PFN_pc_BlitFramebuffer)gl_getproc("glBlitFramebuffer");
         if (!p_genfb || !p_bindfb || !p_fbtex || !p_fbstatus || !p_blit) { p_blit = NULL; return 0; }
     }
     if (!pc_box_program()) return 0;

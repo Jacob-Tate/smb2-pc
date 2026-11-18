@@ -4,7 +4,7 @@ SMB2 is an unofficial, non-commercial native Windows port of
 *Super Monkey Ball 2* (Nintendo GameCube, 2002). It is built from the
 [matching decompilation](https://github.com/girlyoulookthebest/smb2-decomp) of the game:
 the decompiled C code is compiled for x86 / x86_64 and runs on a PC
-platform layer (SDL2, OpenGL 3.3 or Direct3D 12, miniaudio) that stands in for
+platform layer (SDL3, OpenGL 3.3 or Direct3D 12, miniaudio) that stands in for
 the GameCube hardware and SDK. It is **not an emulator**.
 
 **You need your own, legally obtained copy of the game**: a disc image
@@ -32,7 +32,7 @@ runs its own compiled code instead of the disc's `main.dol`.
   uncapped. The game still runs at 60 ticks per second and the frames in
   between are interpolated ([docs/hfr.md](docs/hfr.md)). 60 fps renders
   exactly like the original.
-- Controllers: Xbox, PlayStation, Switch and generic pads through SDL2, with
+- Controllers: Xbox, PlayStation, Switch and generic pads through SDL3, with
   hot-plugging for up to 4 players, GameCube-style analog triggers and stick
   emulation ([docs/stick.md](docs/stick.md)), plus keyboard. On-screen button
   prompts match the controller in use.
@@ -91,7 +91,8 @@ is GameCube A); Nintendo pads are mapped by label, as in Nintendo's own ports.
   digital click, like a GameCube trigger. LB / L1 / L is unused.
 - Pads can be plugged in and out at any time; a new pad takes the first free
   port. The keyboard always drives port 1 too. A `gamecontrollerdb.txt` next to
-  the exe adds SDL mappings for unknown controllers.
+  the exe adds SDL mappings for unknown controllers. `smb2_pc_port.exe --list-controllers`
+  prints every pad SDL sees (name, VID/PID, GUID, mapping) and exits, handy for bug reports.
 
 ### Settings
 
@@ -168,7 +169,7 @@ side. Only Windows builds are supported at the moment.
   `llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64.tar.xz` (clang 19). Clang is
   required because the 64-bit build uses `__ptr32` pointer fields
   ([docs/x64.md](docs/x64.md)).
-- SDL2 2.30.9 for MinGW (static libraries, see below).
+- SDL3 3.4.10 for MinGW (static libraries built by `tools/build_sdl3_mingw.sh`, see below).
 - Your disc image, for the decompilation build and to run the game.
 
 ### Directory layout
@@ -177,9 +178,9 @@ side. Only Windows builds are supported at the moment.
 smb2/
 ├── decomp/        git clone https://github.com/girlyoulookthebest/smb2-decomp decomp
 ├── pc_port/       git clone https://github.com/girlyoulookthebest/smb2-pc pc_port
-│   └── mingw_deps/
-│       ├── i686-w64-mingw32/      SDL2 for the 32-bit build
-│       └── x86_64-w64-mingw32/    SDL2 for the 64-bit build
+│   └── mingw_deps/sdl3/
+│       ├── i686-w64-mingw32/      SDL3 for the 32-bit build
+│       └── x86_64-w64-mingw32/    SDL3 for the 64-bit build
 └── toolchains/
     └── llvm-mingw-20241217-ucrt-ubuntu-20.04-x86_64/
 ```
@@ -201,30 +202,23 @@ python3 configure.py
 ninja
 ```
 
-### 2. SDL2
+### 2. SDL3
+
+SDL3 3.4.10 is built from source as static libraries for both targets by one
+script (needs `cmake ninja-build curl` plus the toolchains above; run it in the
+same WSL/Linux environment):
 
 ```sh
 cd smb2/pc_port
-mkdir -p mingw_deps && cd mingw_deps
-
-# 32-bit: static SDL2 built with the distribution's MinGW GCC
-wget https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-2.30.9.tar.gz
-tar xf SDL2-2.30.9.tar.gz
-mkdir SDL2-2.30.9/build32 && cd SDL2-2.30.9/build32
-../configure --host=i686-w64-mingw32 --prefix="$(realpath ../..)/i686-w64-mingw32" \
-    --disable-shared --enable-static
-make -j"$(nproc)" && make install
-cd ../..
-
-# 64-bit: the x86_64 part of the official MinGW development package
-wget https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz
-tar xf SDL2-devel-2.30.9-mingw.tar.gz
-cp -r SDL2-2.30.9/x86_64-w64-mingw32 .
+bash tools/build_sdl3_mingw.sh          # or: ... i686 | x86_64, --force to rebuild
 ```
 
-(The devel package unpacks into the same `SDL2-2.30.9/` folder as the source;
-only its `x86_64-w64-mingw32/` is used.) SDL2 is linked statically, so the
-exes need no `SDL2.dll`.
+It downloads `SDL3-3.4.10.tar.gz` (from the SDL release page), builds the
+32-bit library with the distribution's MinGW GCC (`cmake/mingw32.cmake`) and the
+64-bit one with llvm-mingw (`cmake/llvm-mingw64.cmake`), and installs them to
+`mingw_deps/sdl3/<triplet>/` (override with `SDL3_DEPS_DIR`). SDL3 is linked
+statically, so the exes need no `SDL3.dll`. CMake stops with a clear message if
+these libraries are missing.
 
 ### 3. The game
 
@@ -295,7 +289,7 @@ The PC port and the decompilation it builds on are both released under the
   ([girlyoulookthebest/smb2-decomp](https://github.com/girlyoulookthebest/smb2-decomp)), set up with
   [decomp-toolkit](https://github.com/encounter/decomp-toolkit) and
   [dtk-template](https://github.com/encounter/dtk-template) (CC0 1.0).
-- [SDL2](https://libsdl.org) 2.30.9 (zlib license), linked statically.
+- [SDL3](https://libsdl.org) 3.4.10 (zlib license), linked statically.
 - [miniaudio](https://miniaud.io) by David Reid (public domain or MIT-0),
   `third_party/miniaudio/`.
 - [stb_image](https://github.com/nothings/stb) by Sean Barrett (public domain

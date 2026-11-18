@@ -17,8 +17,7 @@
 #include <dxgi1_6.h>
 #include "perf.h"
 #include <d3dcompiler.h>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_syswm.h>
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2410,7 +2409,6 @@ static IDXGIAdapter1* pick_adapter(void) {
 }
 
 static bool dx_init(int width, int height, bool vsync, int msaa) {
-    SDL_SysWMinfo wm;
     SDL_Window* win = (SDL_Window*)platform_sdl_window();
     D3D12_COMMAND_QUEUE_DESC qd;
     DXGI_SWAP_CHAIN_DESC1 sd;
@@ -2426,12 +2424,12 @@ static bool dx_init(int width, int height, bool vsync, int msaa) {
         fprintf(stderr, "[d3d12] SMB2_D3D12_FORCEFAIL set - failing init\n");
         return false;
     }
-    SDL_VERSION(&wm.version);
-    if (!SDL_GetWindowWMInfo(win, &wm) || wm.subsystem != SDL_SYSWM_WINDOWS) {
+    D.hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(win),
+                                          SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+    if (!D.hwnd) {
         fprintf(stderr, "[d3d12] no HWND: %s\n", SDL_GetError());
         return false;
     }
-    D.hwnd = wm.info.win.window;
     if (!load_dlls()) return false;
     SDL_GetWindowSizeInPixels(win, &pw, &ph);
     D.width = pw > 0 ? pw : width;

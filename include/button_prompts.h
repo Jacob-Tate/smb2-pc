@@ -46,7 +46,7 @@ int pc_button_prompts_hires(unsigned code, void **image, int *size);
  * current style. */
 char *pc_button_prompts_text(char *str);
 
-/* SDL_GameControllerType of the controller in use (the one that had input
+/* SDL_GamepadType of the controller in use (the one that had input
  * last, else player 1's, else any open one); -1 for none, the keyboard or a
  * joystick without a controller mapping (input_sdl2.c). */
 int input_controller_type(void);
