@@ -8,6 +8,7 @@
 #include "overlay.h"
 #include "netplay/inputsync.h"
 #include "netplay/netplay_active.h"
+#include "netplay/netplay.h"
 
 extern void platform_poll_events(void);
 extern int  platform_should_close(void);
@@ -40,6 +41,7 @@ int pc_overlay_pause_run(void)
         g_shim_frame_pulse++;      /* watchdog */
 #endif
         platform_poll_events();
+        netplay_lobby_tick();      /* E8: keep the online lobby alive while the overlay pauses the game */
         next_ns += 16666667ULL;
         now = platform_get_time_ns();
         if (now < next_ns)

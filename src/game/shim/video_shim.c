@@ -340,6 +340,11 @@ void video_finish_frame(void)
     pc_session_on_poll();
     input_poll_gc_pads_game();   /* pads via inputsync: live / record / replay / netplay (E3) */
     platform_poll_events();
+    {   /* E8: the in-game online lobby (non-blocking) is pumped once per frame while offline */
+        extern void netplay_lobby_tick(void);
+        if (!pc_session_active())
+            netplay_lobby_tick();
+    }
     {
         /* window closed (SDL_EVENT_QUIT) or Quit to Desktop chosen in a menu:
          * pc_quit.c exits once no memory card job is running */

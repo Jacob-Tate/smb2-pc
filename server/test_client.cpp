@@ -82,6 +82,18 @@ struct TestClient {
     }
     // True if a message of this type shows up within ms (it is consumed).
     bool sees(uint8_t type, int ms) { return !waitFor(type, ms).empty(); }
+    // Lets queued reliable messages be delivered and acknowledged first (a plain disconnect can drop them).
+    void disconnectLater() {
+        if (!peer) return;
+        enet_peer_disconnect_later(peer, 0);
+        ENetEvent event;
+        for (int i = 0; i < 40 && enet_host_service(host, &event, 50) > 0;) {
+            if (event.type == ENET_EVENT_TYPE_RECEIVE) enet_packet_destroy(event.packet);
+            if (event.type == ENET_EVENT_TYPE_DISCONNECT) break;
+            i++;
+        }
+        peer = nullptr;
+    }
     void disconnect() {
         if (!peer) return;
         enet_peer_disconnect(peer, 0);
@@ -126,7 +138,7 @@ bool login(TestClient &c, const char *host, uint16_t port, const char *name,
     if (!c.connect(host, port)) return false;
     sendHello(c, name, SMB_NET_PROTOCOL_VERSION, cfg);
     Msg m = c.waitFor(SMB_MSG_WELCOME);
-    if (m.size() != 2) return false;
+    if (m.size() < 2) return false; // clientId, then (E8) a capability byte
     c.id = m[1];
     return true;
 }
@@ -650,6 +662,67 @@ void testHostDropsLast(const char *host, uint16_t port) {
     b.disconnect();
 }
 
+// E8: a member restarts its program for the session (RELAUNCHING, disconnect, new connection, RESUME).
+void testResume(const char *host, uint16_t port) {
+    std::printf("[resume: restart for the session]\n");
+    TestClient a, b;
+    CHECK(login(a, host, port, "Alice"), "alice login");
+    CHECK(login(b, host, port, "Bob"), "bob login");
+    simple(a, SMB_MSG_CREATE_ROOM);
+    const std::string code = latestRoomState(a).code;
+    simple(b, SMB_MSG_JOIN_ROOM, code.data(), 4);
+    latestRoomState(b);
+    sendStart(a, makeConfig());
+    GameStart ga = waitGameStart(a), gb = waitGameStart(b);
+    CHECK(ga.ok && gb.ok, "both got GAME_START");
+
+    // Both restart: RELAUNCHING(token), disconnect.  The game must not end or drop anyone.
+    const uint32_t tokA = 0xA1B2C3D4u, tokB = 0x01020304u;
+    const uint8_t aid = a.id, bid = b.id;
+    uint8_t tb[4];
+    for (int i = 0; i < 4; i++) tb[i] = static_cast<uint8_t>(tokA >> (8 * i));
+    simple(a, SMB_MSG_RELAUNCHING, tb, 4);
+    for (int i = 0; i < 4; i++) tb[i] = static_cast<uint8_t>(tokB >> (8 * i));
+    simple(b, SMB_MSG_RELAUNCHING, tb, 4);
+    a.disconnectLater();
+    b.disconnectLater();
+
+    TestClient a2, b2;
+    CHECK(login(b2, host, port, "Bob"), "bob's new process connects");
+    auto resume = [&](TestClient &c, uint8_t oldId, uint32_t token) {
+        uint8_t p[9];
+        std::memcpy(p, code.data(), 4);
+        p[4] = oldId;
+        for (int i = 0; i < 4; i++) p[5 + i] = static_cast<uint8_t>(token >> (8 * i));
+        simple(c, SMB_MSG_RESUME, p, 9);
+    };
+    resume(b2, bid, 0xBADBADu);
+    CHECK(expectError(b2, SMB_ERR_NO_SUCH_ROOM), "wrong token is refused");
+    resume(b2, bid, tokB);
+    Msg wb = b2.waitFor(SMB_MSG_WELCOME);
+    CHECK(wb.size() >= 2 && wb[1] == bid, "resumed client gets its old id back");
+    GameStart g2 = waitGameStart(b2);
+    CHECK(g2.ok && std::memcmp(&g2.cfg, &ga.cfg, sizeof(ga.cfg)) == 0 && std::memcmp(g2.owners, ga.owners, 4) == 0,
+          "GAME_START repeated unchanged (same epoch, same owners)");
+    CHECK(login(a2, host, port, "Alice"), "alice's new process connects");
+    resume(a2, aid, tokA);
+    GameStart g3 = waitGameStart(a2);
+    CHECK(g3.ok && std::memcmp(&g3.cfg, &ga.cfg, sizeof(ga.cfg)) == 0, "alice resumed too");
+    std::vector<Player> players = {{&a2, {0}}, {&b2, {1}}};
+    CHECK(exchange(players, 0, 100, 0x03), "lockstep runs from poll 0 after both resumed");
+    // A second RESUME with the same token (old seat already taken over) is refused.
+    TestClient thief;
+    CHECK(login(thief, host, port, "Thief"), "thief login");
+    resume(thief, aid, tokA);
+    CHECK(expectError(thief, SMB_ERR_NO_SUCH_ROOM), "a seat that is back can't be taken again");
+    thief.disconnect();
+    // A plain disconnect (no RELAUNCHING) is still a drop.
+    b2.disconnect();
+    Msg dropped = a2.waitFor(SMB_MSG_PLAYER_DROPPED);
+    CHECK(dropped.size() >= 2 && dropped[1] == bid, "a plain disconnect is a drop");
+    a2.disconnect();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -671,6 +744,7 @@ int main(int argc, char **argv) {
     testTwoPlayers(host, port);
     testThreePlayersDrop(host, port);
     testHostDropsLast(host, port);
+    testResume(host, port);
     std::printf("%d checks, %d failure(s)\n", gChecks, gFailures);
     std::printf(gFailures ? "FAILED\n" : "ALL PASSED\n");
     return gFailures ? 1 : 0;

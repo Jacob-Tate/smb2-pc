@@ -28,22 +28,36 @@ void pc_session_default_config(SessionConfig *cfg)
     cfg->flags = 0;
 }
 
-int pc_session_begin(const SessionConfig *cfg)
+static void apply_config(const SessionConfig *cfg)
 {
     uint64_t e;
-
-    if (s_active || !cfg || cfg->locale > 5)
-        return 0;
     s_cfg = *cfg;
     s_cfg.build_id[PC_SESSION_BUILD_ID_MAX - 1] = 0;
     e = s_cfg.epoch ^ (s_cfg.epoch >> 32) ^ (s_cfg.epoch >> 17);
     s_base_secs = GC_EPOCH_2020 + (e % EPOCH_SPAN_SECS);
-    s_polls = 0;
-    s_tick_calls = 0;
-    s_active = 1;
     printf("[session] deterministic session: build '%s' disc %08x locale %u epoch %016llx flags %x\n",
            s_cfg.build_id, (unsigned)s_cfg.disc_hash, (unsigned)s_cfg.locale,
            (unsigned long long)s_cfg.epoch, (unsigned)s_cfg.flags);
+}
+
+int pc_session_begin(const SessionConfig *cfg)
+{
+    if (s_active || !cfg || cfg->locale > 5)
+        return 0;
+    apply_config(cfg);
+    s_polls = 0;
+    s_tick_calls = 0;
+    s_active = 1;
+    return 1;
+}
+
+/* E8: the online lobby ran after the session had begun with defaults (so nothing touched disk meanwhile): swap in
+ * the room's config.  Only before the first poll. */
+int pc_session_reconfigure(const SessionConfig *cfg)
+{
+    if (!s_active || s_polls != 0 || !cfg || cfg->locale > 5)
+        return 0;
+    apply_config(cfg);
     return 1;
 }
 

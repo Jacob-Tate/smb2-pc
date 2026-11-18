@@ -57,6 +57,11 @@ struct Client {
     uint32_t lateMs = 0;      // EMA baseline of how long after the first input of a poll this client's arrives
     uint16_t lateCount = 0;
     uint16_t slowPolls = 0, stalls = 0, worstMs = 0;
+    // E8 resume: the process is restarting for the session (RELAUNCHING); its seat is held until RESUME.
+    bool relaunching = false;
+    bool away = false;         // relaunching and disconnected: no peer
+    uint32_t token = 0;
+    uint32_t awayUntilMs = 0;
 };
 
 struct PendingPoll {
@@ -76,6 +81,7 @@ struct Room {
                                                        SMB_NET_PORT_NONE};
     bool inGame = false;
     std::array<uint8_t, SMB_NET_MAX_PLAYERS> portOwner{}; // snapshot at game start
+    SmbNetSessionConfig startCfg{}; // what GAME_START carried (epoch filled in), re-sent on RESUME
     uint8_t humanMask = 0;
     uint8_t lastSentMask = 0;
     uint32_t nextPoll = 0;
@@ -93,6 +99,7 @@ std::map<std::string, std::unique_ptr<Room>> gRooms;
 std::mt19937_64 gRng{std::random_device{}()};
 
 void send(Client &c, uint8_t channel, const SmbNetWriter &w) {
+    if (!c.peer) return; // away (restarting)
     if (w.overflow) {
         logf("BUG: outgoing message overflowed its buffer");
         return;
@@ -145,7 +152,7 @@ void sendRoomState(Room &room) {
         Client &member = *gClients.at(id);
         smbw_u8(&w, id);
         smbw_str(&w, member.name.c_str(), SMB_NET_MAX_NAME);
-        member.lastSentRtt = member.peer->roundTripTime;
+        member.lastSentRtt = member.peer ? member.peer->roundTripTime : 0;
         smbw_u16(&w, static_cast<uint16_t>(std::min<enet_uint32>(member.lastSentRtt, 65535)));
     }
     for (int port = 0; port < SMB_NET_MAX_PLAYERS; port++) smbw_u8(&w, room.slotOwner[port]);
@@ -174,6 +181,11 @@ void endGame(Room &room, SmbNetEndReason reason, uint8_t who) {
     broadcast(room, SMB_NET_CHANNEL_CONTROL, w);
     room.inGame = false;
     room.humanMask = 0;
+    for (uint8_t id : room.members) {
+        Client &m = *gClients.at(id);
+        m.relaunching = false;
+        if (m.away) m.awayUntilMs = enet_time_get(); // reaped by tick()
+    }
     room.polls.clear();
     room.checksums.clear();
     logf("room %s: game ended (reason %d)", room.code.c_str(), reason);
@@ -272,6 +284,16 @@ void leaveRoom(Client &c) {
     if (!room->members.empty()) sendRoomState(*room);
 }
 
+void sendWelcome(Client &c) {
+    uint8_t buf[4];
+    SmbNetWriter w;
+    smbw_init(&w, buf, sizeof(buf));
+    smbw_u8(&w, SMB_MSG_WELCOME);
+    smbw_u8(&w, c.id);
+    smbw_u8(&w, SMB_CAP_RESUME); // trailing capability byte (older clients ignore it)
+    send(c, SMB_NET_CHANNEL_CONTROL, w);
+}
+
 void onHello(Client &c, SmbNetReader &r) {
     char name[SMB_NET_MAX_NAME + 1];
     char build[SMB_NET_MAX_BUILD_ID + 1];
@@ -298,12 +320,7 @@ void onHello(Client &c, SmbNetReader &r) {
     std::memcpy(c.cfg.buildId, build, std::strlen(build));
     c.cfg.discHash = discHash;
     c.cfg.locale = locale;
-    uint8_t buf[4];
-    SmbNetWriter w;
-    smbw_init(&w, buf, sizeof(buf));
-    smbw_u8(&w, SMB_MSG_WELCOME);
-    smbw_u8(&w, c.id);
-    send(c, SMB_NET_CHANNEL_CONTROL, w);
+    sendWelcome(c);
     logf("client %u: hello from '%s' (build %s, disc %08x, locale %u)", c.id, c.name.c_str(), build, discHash, locale);
 }
 
@@ -346,6 +363,19 @@ void onJoinRoom(Client &c, SmbNetReader &r) {
     sendRoomState(room);
 }
 
+// GAME_START to everyone (to == nullptr) or to one client (RESUME).
+void sendGameStart(Room &room, Client *to) {
+    uint8_t buf[96];
+    SmbNetWriter w;
+    smbw_init(&w, buf, sizeof(buf));
+    smbw_u8(&w, SMB_MSG_GAME_START);
+    smbw_config(&w, &room.startCfg);
+    smbw_bytes(&w, room.portOwner.data(), SMB_NET_MAX_PLAYERS);
+    smbw_u8(&w, room.gameSeq);
+    if (to) send(*to, SMB_NET_CHANNEL_CONTROL, w);
+    else broadcast(room, SMB_NET_CHANNEL_CONTROL, w);
+}
+
 void startGame(Room &room, SmbNetSessionConfig cfg) {
     room.portOwner = room.slotOwner;
     uint8_t humanMask = 0;
@@ -353,6 +383,7 @@ void startGame(Room &room, SmbNetSessionConfig cfg) {
         if (room.slotOwner[port] != SMB_NET_PORT_NONE) humanMask |= static_cast<uint8_t>(1 << port);
     }
     cfg.epoch = gRng();
+    room.startCfg = cfg;
     room.humanMask = humanMask;
     room.lastSentMask = humanMask;
     room.inGame = true;
@@ -363,18 +394,12 @@ void startGame(Room &room, SmbNetSessionConfig cfg) {
     room.checksums.clear();
     for (uint8_t id : room.members) {
         Client &m = *gClients.at(id);
+        m.relaunching = false;
         m.lateMs = 0;
         m.lateCount = m.slowPolls = m.stalls = m.worstMs = 0;
     }
 
-    uint8_t buf[96];
-    SmbNetWriter w;
-    smbw_init(&w, buf, sizeof(buf));
-    smbw_u8(&w, SMB_MSG_GAME_START);
-    smbw_config(&w, &cfg);
-    smbw_bytes(&w, room.portOwner.data(), SMB_NET_MAX_PLAYERS);
-    smbw_u8(&w, room.gameSeq);
-    broadcast(room, SMB_NET_CHANNEL_CONTROL, w);
+    sendGameStart(room, nullptr);
     sendRoomState(room);
     logf("room %s: game started (delay %u, epoch %016llx, human ports 0x%x)", room.code.c_str(), cfg.inputDelay,
          static_cast<unsigned long long>(cfg.epoch), humanMask);
@@ -494,6 +519,49 @@ void onEndGame(Client &c) {
     endGame(*room, SMB_END_HOST, c.id);
 }
 
+// E8: the client got GAME_START and is restarting its program for the session; hold its seat.
+void onRelaunching(Client &c, SmbNetReader &r) {
+    const uint32_t token = smbr_u32(&r);
+    if (r.error) return sendError(c, SMB_ERR_BAD_MESSAGE, "malformed RELAUNCHING");
+    if (!c.room || !c.room->inGame) return; // only meaningful after GAME_START
+    c.relaunching = true;
+    c.token = token;
+    logf("room %s: %s is restarting for the session", c.room->code.c_str(), c.name.c_str());
+}
+
+// E8: the restarted process takes over the old member's seat (same client id, so nothing else changes).
+void onResume(Client &c, SmbNetReader &r) {
+    char code[SMB_NET_ROOM_CODE_LEN + 1] = {};
+    smbr_bytes(&r, code, SMB_NET_ROOM_CODE_LEN);
+    for (char &ch : code) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    const uint8_t oldId = smbr_u8(&r);
+    const uint32_t token = smbr_u32(&r);
+    if (r.error) return sendError(c, SMB_ERR_BAD_MESSAGE, "malformed RESUME");
+    const auto room = gRooms.find(code);
+    const auto old = gClients.find(oldId);
+    if (room == gRooms.end() || !room->second->inGame || old == gClients.end() || old->second.get() == &c ||
+        old->second->room != room->second.get() || !old->second->relaunching || old->second->token != token) {
+        return sendError(c, SMB_ERR_NO_SUCH_ROOM, "can't resume: the game is gone, or the seat was given up");
+    }
+    Client &o = *old->second;
+    Room &rm = *room->second;
+    if (o.peer) { // the old process's disconnect hasn't been seen yet
+        o.peer->data = nullptr;
+        enet_peer_disconnect_now(o.peer, 0);
+    }
+    o.peer = c.peer;
+    o.peer->data = &o;
+    o.away = false;
+    o.relaunching = false;
+    o.helloed = true;
+    c.peer = nullptr;
+    logf("room %s: %s is back (client %u)", rm.code.c_str(), o.name.c_str(), o.id);
+    sendWelcome(o);
+    sendRoomState(rm);
+    sendGameStart(rm, &o);
+    gClients.erase(c.id); // c is gone: the caller must not touch it
+}
+
 void onReceive(Client &c, ENetPacket *packet) {
     SmbNetReader r;
     smbr_init(&r, packet->data, packet->dataLength);
@@ -510,6 +578,8 @@ void onReceive(Client &c, ENetPacket *packet) {
     case SMB_MSG_CHOOSE: return onChoose(c, r);
     case SMB_MSG_PERF: return onPerf(c, r);
     case SMB_MSG_END_GAME: return onEndGame(c);
+    case SMB_MSG_RELAUNCHING: return onRelaunching(c, r);
+    case SMB_MSG_RESUME: return onResume(c, r);
     default: return sendError(c, SMB_ERR_BAD_MESSAGE, "unknown message type");
     }
 }
@@ -524,9 +594,9 @@ void sendNetStats(Room &room) {
         const Client &m = *gClients.at(id);
         const ENetPeer *p = m.peer;
         smbw_u8(&w, id);
-        smbw_u16(&w, static_cast<uint16_t>(std::min<enet_uint32>(p->roundTripTime, 65535)));
-        smbw_u16(&w, static_cast<uint16_t>(std::min<enet_uint32>(p->roundTripTimeVariance, 65535)));
-        smbw_u8(&w, static_cast<uint8_t>(std::min<enet_uint32>(p->packetLoss * 100 / ENET_PEER_PACKET_LOSS_SCALE, 100)));
+        smbw_u16(&w, static_cast<uint16_t>(p ? std::min<enet_uint32>(p->roundTripTime, 65535) : 0));
+        smbw_u16(&w, static_cast<uint16_t>(p ? std::min<enet_uint32>(p->roundTripTimeVariance, 65535) : 0));
+        smbw_u8(&w, static_cast<uint8_t>(p ? std::min<enet_uint32>(p->packetLoss * 100 / ENET_PEER_PACKET_LOSS_SCALE, 100) : 0));
         smbw_u16(&w, m.lateCount);
         smbw_u16(&w, m.slowPolls);
         smbw_u16(&w, m.stalls);
@@ -539,6 +609,19 @@ void sendNetStats(Room &room) {
 // refreshes lobby pings.
 void tick() {
     const uint32_t now = enet_time_get();
+    {   // E8: members that restarted for a session and never came back
+        std::vector<uint8_t> expired;
+        for (auto &entry : gClients) {
+            const Client &m = *entry.second;
+            if (m.away && static_cast<int32_t>(now - m.awayUntilMs) >= 0) expired.push_back(m.id);
+        }
+        for (uint8_t id : expired) {
+            Client &m = *gClients.at(id);
+            logf("client %u: did not come back from its restart", id);
+            leaveRoom(m);
+            gClients.erase(id);
+        }
+    }
     for (auto &entry : gRooms) {
         Room &room = *entry.second;
         if (room.inGame) {
@@ -565,7 +648,7 @@ void tick() {
             bool changed = false;
             for (uint8_t id : room.members) {
                 const Client &m = *gClients.at(id);
-                const int rtt = static_cast<int>(m.peer->roundTripTime);
+                const int rtt = m.peer ? static_cast<int>(m.peer->roundTripTime) : 0;
                 changed |= std::abs(rtt - static_cast<int>(m.lastSentRtt)) >= 5;
             }
             if (changed) sendRoomState(room);
@@ -639,6 +722,15 @@ int main(int argc, char **argv) {
             }
             case ENET_EVENT_TYPE_DISCONNECT: {
                 if (auto *c = static_cast<Client *>(event.peer->data)) {
+                    if (c->relaunching && c->room && c->room->inGame) {
+                        // E8: it is restarting for the session; keep the seat until RESUME or the grace runs out
+                        c->away = true;
+                        c->peer = nullptr;
+                        c->awayUntilMs = enet_time_get() + SMB_NET_RESUME_GRACE_MS;
+                        logf("client %u: disconnected (restarting, seat held)", c->id);
+                        event.peer->data = nullptr;
+                        break;
+                    }
                     logf("client %u: disconnected", c->id);
                     leaveRoom(*c);
                     gClients.erase(c->id);

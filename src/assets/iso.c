@@ -18,6 +18,7 @@ struct ISOArchive {
     GCFSTEntry* fst;
     char* string_table;
     int fst_count;
+    uint32_t fst_size;      /* bytes of fst[] */
     ISOFileEntry* entries;
     bool is_wii;
     /* extracted game-data folder backend (iso_open_gamedata) */
@@ -52,6 +53,7 @@ void iso_set_quiet(bool quiet) { s_iso_quiet = quiet; }
  * and sizes are identical whichever one is in use.  Rejects an FST whose
  * entry count / name offsets do not fit inside it. */
 static bool iso_build_entries(ISOArchive* arc, uint32_t fst_size) {
+    arc->fst_size = fst_size;
     if (fst_size < sizeof(GCFSTEntry)) return false;
     /* First entry is root directory - contains count */
     arc->fst_count = read_be32(&arc->fst[0].file_size);
@@ -759,4 +761,13 @@ int iso_path_to_index_from(ISOArchive* arc, int dir_index, const char* path) {
 
 int iso_path_to_index(ISOArchive* arc, const char* path) {
     return iso_path_to_index_from(arc, 0, path);
+}
+
+/* Disc identity for the netplay handshake (E8): CRC-32 of the disc FST, the
+ * same value as `fst_crc32` in a gamedata manifest (and of sys/fst.bin), so an
+ * ISO, an RVZ and an extracted folder of the same disc agree. */
+uint32_t gd_crc32(uint32_t crc, const void* data, size_t n);
+uint32_t iso_fst_crc32(ISOArchive* arc) {
+    if (!arc || !arc->fst || arc->fst_size == 0) return 0;
+    return gd_crc32(0, arc->fst, arc->fst_size);
 }
