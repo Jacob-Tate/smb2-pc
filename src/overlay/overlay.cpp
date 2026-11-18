@@ -8,6 +8,8 @@
 #include "backends/imgui_impl_sdl3.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "overlay_d3d12.h"
+#include "overlay_ui.h"
+#include "pc_settings.h"
 
 extern "C" long g_dbg_frame_counter;   // swapped frames (platform_sdl2.c)
 // render_d3d12.c: device / queue / frames in flight for the DX12 backend
@@ -22,7 +24,8 @@ bool            s_open;
 bool            s_frame_started;
 bool            s_start_open;     // --overlay-open pending (applied at init)
 long            s_open_from = -1, s_open_to = -1;
-bool            s_show_demo;
+const char*     s_test_sets[16];  // --overlay-test-set key=value, applied at init
+int             s_test_nsets;
 Uint64          s_last_mouse_ms;
 bool            s_cursor_shown = true;
 Uint64          s_chord_since;    // 0 = Back+Start not both held
@@ -46,25 +49,9 @@ bool chord_buttons_down() {
 }
 
 void build_ui() {
-    ImGui::SetNextWindowPos(ImVec2(40, 40), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(420, 260), ImGuiCond_FirstUseEver);
     if (s_focus_pending) { ImGui::SetNextWindowFocus(); s_focus_pending = false; }
-    if (ImGui::Begin("SMB2 overlay (placeholder)")) {
-        static float volume = 0.8f;
-        static int   mode = 0;
-        static bool  check = true;
-        ImGui::Text("Dear ImGui %s - F2 / Guide / Back+Start (0.5 s) toggles", IMGUI_VERSION);
-        ImGui::Text("Frame %ld, %.1f FPS", g_dbg_frame_counter, ImGui::GetIO().Framerate);
-        ImGui::Separator();
-        ImGui::SliderFloat("Volume", &volume, 0.0f, 1.0f);
-        ImGui::Combo("Mode", &mode, "Windowed\0Borderless\0Fullscreen\0");
-        ImGui::Checkbox("Example option", &check);
-        if (ImGui::Button("Close")) s_open = false;
-        ImGui::SameLine();
-        ImGui::Checkbox("Show ImGui demo", &s_show_demo);
-    }
-    ImGui::End();
-    if (s_show_demo) ImGui::ShowDemoWindow(&s_show_demo);
+    ovl::build();
+    if (ovl::close_requested()) overlay_set_open(false);
 }
 
 void apply_schedule() {
@@ -89,7 +76,7 @@ bool overlay_init(SDL_Window* window, OverlayRenderer renderer) {
     io.IniFilename = nullptr;     // no imgui.ini next to the exe
     io.LogFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
-    ImGui::StyleColorsDark();
+    ovl::style_init();
     bool ok = renderer == OVERLAY_RENDERER_GL
         ? (ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext()) &&
            ImGui_ImplOpenGL3_Init("#version 330 core"))
@@ -101,6 +88,7 @@ bool overlay_init(SDL_Window* window, OverlayRenderer renderer) {
     }
     ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);   // any player's pad can navigate
     s_ready = true;
+    for (int i = 0; i < s_test_nsets; i++) pcs_test_set(s_test_sets[i]);   // same setters as the UI rows
     if (s_start_open) overlay_set_open(true);
     printf("[overlay] Dear ImGui %s ready (%s)\n", IMGUI_VERSION,
            renderer == OVERLAY_RENDERER_GL ? "OpenGL" : "Direct3D 12");
@@ -207,7 +195,7 @@ void overlay_set_open(bool open) {
     if (open != s_open) {
         printf("[overlay] %s (swapped frame %ld)\n", open ? "open" : "closed", g_dbg_frame_counter);
         fflush(stdout);
-        if (open) s_focus_pending = true;   // gamepad nav needs a focused window
+        if (open) { s_focus_pending = true; ovl::on_open(); }   // gamepad nav needs a focused window
     }
     s_open = open;
 }
@@ -231,5 +219,9 @@ void overlay_test_open_at_start(void) {
 }
 
 void overlay_test_open_frames(long from, long to) { s_open_from = from; s_open_to = to; }
+
+void overlay_test_set(const char* key_value) {
+    if (s_test_nsets < 16) s_test_sets[s_test_nsets++] = key_value;
+}
 
 }  // extern "C"

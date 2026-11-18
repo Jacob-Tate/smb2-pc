@@ -64,6 +64,10 @@ void overlay_d3d12_invalidate(void);
  * (open while a <= swapped frame < b; applied by overlay_render). */
 void overlay_test_open_at_start(void);
 void overlay_test_open_frames(long from, long to);
+/* --overlay-test-set key=value (repeatable): applied once at overlay_init through the
+ * same setters the UI rows use (pcs_test_set; keys in pc_settings.h).  key_value must
+ * stay valid (argv). */
+void overlay_test_set(const char* key_value);
 
 #ifdef __cplusplus
 }
