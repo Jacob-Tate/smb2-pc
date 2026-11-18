@@ -723,6 +723,75 @@ void testResume(const char *host, uint16_t port) {
     a2.disconnect();
 }
 
+// E9: back to the lobby after a game: RELAUNCHING/RESUME work in the lobby phase too (the seat is held, the room is
+// kept), the room can't start again until everybody is back, and a member that never returns is dropped.
+void testLobbyResume(const char *host, uint16_t port) {
+    std::printf("[resume: back to the lobby after a game]\n");
+    TestClient a, b;
+    CHECK(login(a, host, port, "Alice"), "alice login");
+    CHECK(login(b, host, port, "Bob"), "bob login");
+    simple(a, SMB_MSG_CREATE_ROOM);
+    const std::string code = latestRoomState(a).code;
+    simple(b, SMB_MSG_JOIN_ROOM, code.data(), 4);
+    latestRoomState(b);
+    sendStart(a, makeConfig());
+    GameStart ga = waitGameStart(a), gb = waitGameStart(b);
+    CHECK(ga.ok && gb.ok, "both got GAME_START");
+    simple(a, SMB_MSG_END_GAME);
+    Msg ea = a.waitFor(SMB_MSG_GAME_ENDED), eb = b.waitFor(SMB_MSG_GAME_ENDED);
+    CHECK(ea.size() >= 3 && ea[1] == SMB_END_HOST && eb.size() >= 3, "both told the game ended (host)");
+    RoomState lob = latestRoomState(b);
+    CHECK(lob.ok && lob.phase == SMB_ROOM_LOBBY && lob.count == 2, "room is in the lobby phase with both members");
+
+    // Both restart back to the lobby: RELAUNCHING in the lobby phase, disconnect.  Nobody is dropped.
+    const uint32_t tokA = 0x11223344u, tokB = 0x55667788u;
+    const uint8_t aid = a.id, bid = b.id;
+    uint8_t tb[4];
+    for (int i = 0; i < 4; i++) tb[i] = static_cast<uint8_t>(tokA >> (8 * i));
+    simple(a, SMB_MSG_RELAUNCHING, tb, 4);
+    for (int i = 0; i < 4; i++) tb[i] = static_cast<uint8_t>(tokB >> (8 * i));
+    simple(b, SMB_MSG_RELAUNCHING, tb, 4);
+    a.disconnectLater();
+    b.disconnectLater();
+
+    auto resume = [&](TestClient &c, uint8_t oldId, uint32_t token) {
+        uint8_t p[9];
+        std::memcpy(p, code.data(), 4);
+        p[4] = oldId;
+        for (int i = 0; i < 4; i++) p[5 + i] = static_cast<uint8_t>(token >> (8 * i));
+        simple(c, SMB_MSG_RESUME, p, 9);
+    };
+    TestClient a2, b2;
+    CHECK(login(a2, host, port, "Alice"), "alice's new process connects");
+    resume(a2, aid, tokA);
+    Msg wa = a2.waitFor(SMB_MSG_WELCOME);
+    CHECK(wa.size() >= 3 && wa[1] == aid && (wa[2] & SMB_CAP_LOBBY_RESUME), "alice gets her old id and the lobby cap");
+    RoomState ra = latestRoomState(a2);
+    CHECK(ra.ok && ra.code == code && ra.phase == SMB_ROOM_LOBBY && ra.count == 2 && ra.host == aid,
+          "alice is back in the same room (lobby, 2 members, still host)");
+    CHECK(!a2.sees(SMB_MSG_GAME_START, 300), "no GAME_START is sent for a lobby resume");
+    // the host can't start while Bob is still on his way back
+    sendStart(a2, makeConfig());
+    CHECK(expectError(a2, SMB_ERR_BAD_SETTINGS), "START_GAME is refused while a member is still restarting");
+    CHECK(login(b2, host, port, "Bob"), "bob's new process connects");
+    resume(b2, bid, 0xBADBADu);
+    CHECK(expectError(b2, SMB_ERR_NO_SUCH_ROOM), "wrong token is refused");
+    resume(b2, bid, tokB);
+    Msg wb = b2.waitFor(SMB_MSG_WELCOME);
+    CHECK(wb.size() >= 2 && wb[1] == bid, "bob gets his old id back");
+    RoomState rb = latestRoomState(b2);
+    CHECK(rb.ok && rb.phase == SMB_ROOM_LOBBY && rb.count == 2 && ownersAre(rb, aid, bid, 0xFF, 0xFF),
+          "bob is back in his seat (P2)");
+    // the room is usable again
+    sendStart(a2, makeConfig());
+    GameStart g2 = waitGameStart(a2), g3 = waitGameStart(b2);
+    CHECK(g2.ok && g3.ok, "the host can start another game");
+    std::vector<Player> players = {{&a2, {0}}, {&b2, {1}}};
+    CHECK(exchange(players, 0, 100, 0x03), "lockstep runs again");
+    a2.disconnect();
+    b2.disconnect();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -745,6 +814,7 @@ int main(int argc, char **argv) {
     testThreePlayersDrop(host, port);
     testHostDropsLast(host, port);
     testResume(host, port);
+    testLobbyResume(host, port);
     std::printf("%d checks, %d failure(s)\n", gChecks, gFailures);
     std::printf(gFailures ? "FAILED\n" : "ALL PASSED\n");
     return gFailures ? 1 : 0;
