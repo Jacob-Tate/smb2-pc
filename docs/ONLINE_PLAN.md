@@ -48,7 +48,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | DONE (227973c) |
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | DONE (c2733e4) |
 | D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | REVIEW (merged a214292; user checks gamepad nav + cursor hide) |
-| D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | IN PROGRESS (task/D4, 2026-11-17) |
+| D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | REVIEW (merged cdabe8f; user checks look + pad nav) |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
 | E2 | Deterministic session mode (`--det-session`) | E1 | game shim | DONE (f688666) |
@@ -829,3 +829,11 @@ Candidate fixes (choose from C1's results; likely several):
   D1's attract-frame pixel noise confirmed on both renderers at 60 fps, sim hash identical -> new task X2.
 - Next wave: D4 (overlay tabs), E8 (session start flow / in-game lobby API, relaunch), X2 (read-mostly). E9 after E8
   (both rework netplay.c); E7 after D4 + E8.
+- **D4 merged (cdabe8f)**: tabbed ImGui overlay (Video, Audio, Input, Game, Online placeholder, Interface), partyboard-style
+  panel, help pane, LB/RB tabs, Close button + "Close overlay" row. Tabs in `src/overlay/tab_*.cpp` (E7 fills
+  `ovl::tab_online()` in tab_online.cpp). Settings go through new `pcs_choice_*` API in pc_settings.c (same code path as
+  Options > Game Screen); new `show_fps` setting (D5 draws it). Test hook `--overlay-test-set key=value`;
+  `tools/smoke/overlay_settings.sh` (11 options set -> restart -> settings.dat) PASS on the orchestrator's re-run (worktree
+  build). Review PNGs in docs/handoff/D4/ (viewed Video + Audio: fine). Notes: disc "change" only forgets the path; the
+  stick/memcard/updates buttons open modal game screens (hide them online, E7/E8); Segoe UI read from C:/Windows/Fonts.
+  **User REVIEW**: F2 / Back+Start, look of each tab, navigate + change values with the pad, Close.
