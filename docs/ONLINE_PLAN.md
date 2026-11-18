@@ -767,3 +767,12 @@ Candidate fixes (choose from C1's results; likely several):
   ~700–800 differ in pixels between runs even with --det-session (detlog/sim matches) → use menu frames
   after the START presses (1560+) for pixel comparisons; E4 should check whether that's render-only.
 - Started D2 (D3D12 overlay). D3 waits for E3 (input_sdl2.c).
+
+### 2026-11-17 (late): context handoff
+- Session ending. Still running at handoff: **D2** (worktree `../wt/D2`, branch task/D2) and **E3** (`../wt/E3`,
+  task/E3). Their agents may have been stopped with the session: check `git -C ../wt/<ID> log --oneline online..`
+  and `docs/handoff/<ID>.md` in each worktree, then resume (new Sonnet agent with the same prompt shape, §3.2,
+  "continue from docs/handoff/<ID>.md") or verify + merge if the handoff says DONE.
+- Next after those: D3 (after E3), D4, D5, E4, E6, then E7/E8/E9.
+- Open user REVIEWs: Steam Controller in game (Steam closed), friend build Shift-start dialog, keyboard-only
+  menus, file dialogs, Alt+Enter, hot-plug (see C2c and F1 entries above).
