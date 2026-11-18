@@ -65,7 +65,8 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | DONE (c5b51f6, fix 372d700) |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
 | X1 | Integer divide-by-zero crash (0xC0000094) in Mode Select: script `1350:START,1450:START,1550:START,1800:A,2300:A,2400:RIGHT,2420:RIGHT`, no pad; also on pre-E3 builds | – | game shim | DONE (merged; vectored handler emulates PPC divw) |
-| X2 | Attract/title frames ~690–810 differ in pixels between det-session runs (both renderers) though checksums match: find cause, check hash coverage | E4 | none (read-mostly) | IN PROGRESS (no branch unless a fix, 2026-11-17) |
+| X2 | Attract/title frames ~690–810 differ in pixels between det-session runs (both renderers) though checksums match: find cause, check hash coverage | E4 | none (read-mostly) | DONE (report docs/handoff/X2.md; render-only, netplay unaffected) |
+| X3 | (Low) GL persistent vertex ring hazard in render_opengl.c (ring_alloc/ring_write/ring_write_rect; suspect a_uvrect reading stale rect_vbo on draws without rects, or coherent-map write timing) causes frame-to-frame pixel noise; then audit render_d3d12.c's upload ring | X2 | render | TODO |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
 Dependency graph (parallel lanes after P0.3):
@@ -837,3 +838,9 @@ Candidate fixes (choose from C1's results; likely several):
   build). Review PNGs in docs/handoff/D4/ (viewed Video + Audio: fine). Notes: disc "change" only forgets the path; the
   stick/memcard/updates buttons open modal game screens (hide them online, E7/E8); Segoe UI read from C:/Windows/Fonts.
   **User REVIEW**: F2 / Back+Start, look of each tab, navigate + change values with the pad, Close.
+- **X2 done (docs only, docs/handoff/X2.md)**: the pixel noise is render-only. Instrumented GL build hashed every draw input
+  (vertices, UV rects, draw/TEV consts, texture uploads): identical in two runs for all 812 frames, yet pixels differ.
+  `SMB2_NO_PERSISTENT_VBO=1` → 0/26 frames differ; glFinish after each draw → 1/26; EFB copy path ruled out. Cause is in the
+  GL persistent-mapped vertex ring (CPU-write/GPU-read race or stale rect data) → new low-priority task X3. Not attract-only
+  (race gameplay frames differ too); D3D12 shows it too (own ring, not inspected). Sim hash/netplay unaffected. For pixel-diff
+  tests use `SMB2_NO_PERSISTENT_VBO=1` (slow) until X3. Instrumentation patch kept in `super_monkey/wt/X2_tmp` (not in git).
