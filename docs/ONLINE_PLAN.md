@@ -46,7 +46,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | C2d | Port input to SDL3 gamepad API; Steam Controller works | (inside C2c) | input | REVIEW (merged c01ae12, inside C2c) |
 | C2e | README/docs for SDL3; pin version | C2d | docs | DONE (README build steps + credits done in C2c) |
 | D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | DONE (227973c) |
-| D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | IN PROGRESS (task/D2, 2026-11-17) |
+| D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | DONE (c2733e4) |
 | D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | TODO (after E3: both edit input_sdl2.c) |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
@@ -98,6 +98,7 @@ P0.2 ─┴─ P0.3 ─┬─ P0.4
 | D-5 | RVZ is decoded **natively in C** (`src/assets/rvz.c`) with vendored zstd (decompressor only). Supported: GameCube RVZ, compression zstd or none. bzip2/LZMA/LZMA2 RVZ is rejected with a clear message ("re-convert in Dolphin with zstd"). | Dolphin's default RVZ compression is zstd. Avoids a Rust (nod) dependency in a mingw cross build. |
 | D-6 | Online sessions start from a **fresh deterministic boot** of the game with a session memory card (no real saves read or written), and lockstep runs from frame 0. | Removes boot-time and save-data differences between PCs; simplest correct start. |
 | D-8 | **Migrate the port from SDL2 2.30.9 to SDL3 (3.4.10 or newer 3.4.x), statically linked** (C2b–C2e). The overlay (D1+) is built on the SDL3 ImGui backend, so D1 waits for C2c. | C1 found: the new Steam Controller ("Triton", VID 0x28DE PID 0x1302–0x1305) is only supported by SDL3 ≥ 3.4.0 (`SDL_hidapi_steam_triton.c`, on by default on Windows); no SDL2 release has it. sdl2-compat can't be linked statically on MinGW. Official SDL3 MinGW devel package is DLL-only → build static libs from source. Estimate ~330 `SDL_` references in 20 files. |
+| D-9 | **Target only the Windows x64 build for now** (user, 2026-11-17). Build and test x64 only; i686 builds are not required, and cross-arch (x64 vs i686) netplay compatibility is out of scope (drops E1's T6 / E4's i686 runs). | User priority. Overrides the "both x64 and i686" rule in §3.2 and task acceptance lines. |
 | D-7 | Subagents never edit this file. They write `docs/handoff/<ID>.md` and return a report; the orchestrator updates this file. | No merge conflicts on the plan between parallel worktrees. |
 
 ### Open questions for the user (defaults in bold; proceed with default if no answer)
@@ -145,8 +146,7 @@ Rules:
 - Don't edit docs/ONLINE_PLAN.md. Keep docs/handoff/<ID>.md up to date as you go
   (what's done, what's left, gotchas, exact commands that worked), so another agent can
   continue if you stop mid-way. Commit it with your work.
-- Build with tools/win_build.sh (§4.3). The build must pass for both x64 and i686 unless the
-  task says otherwise.
+- Build with tools/win_build.sh (§4.3). The build must pass for x64 (i686 not required, D-9).
 - Follow the repo's existing conventions: C99 game/shim code, docs/detmath.md rules for
   anything game code touches, docs/x64.md for pointer-size issues.
 - Don't touch files outside the task's "Files" list without saying why in the report.
@@ -776,3 +776,16 @@ Candidate fixes (choose from C1's results; likely several):
 - Next after those: D3 (after E3), D4, D5, E4, E6, then E7/E8/E9.
 - Open user REVIEWs: Steam Controller in game (Steam closed), friend build Shift-start dialog, keyboard-only
   menus, file dialogs, Alt+Enter, hot-plug (see C2c and F1 entries above).
+
+### 2026-11-17 (resume): D2 + E3 restarted
+- Found both agents stopped mid-task, no handoff files. D2: commit 97e41fe (DX12 bridge, renderer hooks) + uncommitted
+  `overlay.cpp`/`overlay_d3d12.cpp` (log text, SRV heap bind before RenderDrawData). E3: commit 4c62ec8 (inputsync,
+  checksum, state hash, CLI flags) + untracked `tools/smoke/record_replay.sh`. Unverified. New Sonnet agents resume both
+  in the same worktrees.
+- User (D-9): x64 Windows only; no i686 builds, no cross-arch compatibility. D2/E3 agents told mid-run.
+- **D2 merged (c2733e4)**: `src/overlay/overlay_d3d12.{cpp,h}` (own 8-slot SRV heap), overlay drawn last in `dx_present`
+  then `apply_frame_state()` rebinds the game's state; frame dumps include the overlay. Vendored ImGui dx12 backend patched
+  to load D3DCompile/CreateDXGIFactory1 at run time (no link-time d3dcompiler/dxgi import). Test hook
+  `SMB2_TEST_RESIZE_AT=<frame>` (resizes + fullscreen toggles). Orchestrator: x64 build OK, D3D12 `--overlay-open-frames`
+  dump at 1560 shows the window over Mode Select, boot_to_menu PASS. Pre-existing debug-layer warning (timestamp query
+  on frame 1) left for later. `overlay_d3d12_invalidate()` unused (renderer never recreates the device).
