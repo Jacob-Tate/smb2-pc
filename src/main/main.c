@@ -12,6 +12,8 @@
 #include "pc_update.h"
 #include "pc_card.h"
 #include "netplay/session.h"
+#include "netplay/inputsync.h"
+#include "netplay/checksum.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +59,11 @@ const char* g_button_style_arg = NULL; /* --button-style: auto|gc|ps|ps4|ps5|xbo
 static int g_det_session_arg = 0;          /* --det-session (docs/handoff/E2.md) */
 static SessionConfig g_session_cfg;
 static int g_session_epoch_given, g_session_locale_given;
+static const char* g_record_arg = NULL;       /* --record <file> (E3) */
+static const char* g_replay_arg = NULL;       /* --replay <file> (E3) */
+static const char* g_checksum_log_arg = NULL; /* --checksum-log <file> (E3) */
+static long g_max_frames_arg = 0;             /* --max-frames <n>: stop after n input polls (E3) */
+static int g_checksum_ring_arg = 0;           /* --checksum-ring */
 
 /* Forward declarations from decompiled game (weak stubs for standalone build) */
 #if !defined(SMB2_LINK_GAME)
@@ -222,6 +229,16 @@ int main(int argc, char* argv[]) {
             g_button_style_arg = argv[++i];
         } else if (strcmp(argv[i], "--det-session") == 0) {
             g_det_session_arg = 1;
+        } else if (strcmp(argv[i], "--record") == 0 && i + 1 < argc) {
+            g_record_arg = argv[++i];
+        } else if (strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
+            g_replay_arg = argv[++i];
+        } else if (strcmp(argv[i], "--checksum-log") == 0 && i + 1 < argc) {
+            g_checksum_log_arg = argv[++i];
+        } else if (strcmp(argv[i], "--max-frames") == 0 && i + 1 < argc) {
+            g_max_frames_arg = atol(argv[++i]);
+        } else if (strcmp(argv[i], "--checksum-ring") == 0) {
+            g_checksum_ring_arg = 1;
         } else if (strcmp(argv[i], "--session-epoch") == 0 && i + 1 < argc) {
             g_session_cfg.epoch = strtoull(argv[++i], NULL, 0);
             g_session_epoch_given = 1;
@@ -271,6 +288,14 @@ int main(int argc, char* argv[]) {
                    "                    empty memory card with all party games unlocked, forced\n"
                    "                    locale/button style, no PC rows or dialogs\n"
                    "                    (--session-epoch <n>, --session-locale <0-5>)\n");
+            printf("  --record <file>   Record every poll's 4 pads to <file> (implies --det-session)\n"
+                   "  --replay <file>   Play a recording: pads come from the file, the session\n"
+                   "                    config (epoch, locale) from its header (implies --det-session;\n"
+                   "                    local input ignored; exits at the end of the file)\n"
+                   "  --checksum-log <file> Write 'poll N hash XXXXXXXX' every 60 polls (session only)\n"
+                   "  --max-frames <n>  Exit(0) after n input polls (one per game frame; unlike\n"
+                   "                    --exit-frame, which counts presented frames)\n"
+                   "  --checksum-ring   Hash every poll into a 600-entry ring (desync bisecting)\n");
             printf("  --list-controllers Print every joystick / gamepad SDL sees (name, VID/PID,\n"
                    "                    GUID, mapping), wait 1 s for late devices, then exit\n");
             printf("  --perf            Print frame timing / GL counters every 300 frames\n");
@@ -279,19 +304,44 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (g_record_arg && g_replay_arg) {
+        fprintf(stderr, "--record and --replay cannot be combined\n");
+        return 1;
+    }
+    if (g_replay_arg) {
+        /* the recording carries the session config (epoch, locale, ...) */
+        SessionConfig rc;
+        if (!inputsync_open_replay(g_replay_arg, &rc))
+            return 1;
+        g_session_cfg = rc;
+        g_session_epoch_given = g_session_locale_given = 0;
+        g_det_session_arg = 2;   /* config already set */
+    }
+    if (g_record_arg)
+        g_det_session_arg = g_det_session_arg ? g_det_session_arg : 1;
     if (g_det_session_arg) {
         /* Deterministic session (E2): config from the defaults + --session-*
          * flags (netplay fills it from START_GAME later).  Everything the
          * session pins is described in docs/handoff/E2.md. */
         SessionConfig c;
-        pc_session_default_config(&c);
-        if (g_session_epoch_given) c.epoch = g_session_cfg.epoch;
-        if (g_session_locale_given) c.locale = g_session_cfg.locale;
+        if (g_det_session_arg == 2) {
+            c = g_session_cfg;   /* from the recording */
+        } else {
+            pc_session_default_config(&c);
+            if (g_session_epoch_given) c.epoch = g_session_cfg.epoch;
+            if (g_session_locale_given) c.locale = g_session_cfg.locale;
+        }
         g_session_cfg = c;
         if (!pc_session_begin(&g_session_cfg)) {
             fprintf(stderr, "invalid session config (locale must be 0..5)\n");
             return 1;
         }
+        if (g_record_arg && !inputsync_open_record(g_record_arg))
+            return 1;
+        checksum_open_log(g_checksum_log_arg);
+        checksum_enable_ring(g_checksum_ring_arg);
+        if (g_max_frames_arg > 0)
+            inputsync_set_max_polls((uint64_t)g_max_frames_arg);
         g_language_arg = NULL;       /* the session forces the locale */
         g_button_style_arg = NULL;   /* ... and the GameCube button style */
     }

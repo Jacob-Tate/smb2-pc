@@ -338,7 +338,7 @@ void video_finish_frame(void)
     /* deterministic session (E2): the poll counter advances here; E3 hooks the
      * pad exchange and the checksum at this point (see docs/handoff/E2.md) */
     pc_session_on_poll();
-    input_poll_gc_pads();
+    input_poll_gc_pads_game();   /* pads via inputsync: live / record / replay / netplay (E3) */
     platform_poll_events();
     {
         /* window closed (SDL_EVENT_QUIT) or Quit to Desktop chosen in a menu:
