@@ -48,16 +48,16 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | DONE (227973c) |
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | DONE (c2733e4) |
 | D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | REVIEW (merged a214292; user checks gamepad nav + cursor hide) |
-| D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
+| D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | IN PROGRESS (task/D4, 2026-11-17) |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
 | E2 | Deterministic session mode (`--det-session`) | E1 | game shim | DONE (f688666) |
 | E3 | Input record/replay + state checksum | E2 | input+shim | DONE (3e0e393) |
-| E4 | Local determinism test (two runs, same checksums) | E3 | tools | IN PROGRESS (task/E4, 2026-11-17) |
+| E4 | Local determinism test (two runs, same checksums) | E3 | tools | DONE (e6696cc; T8 → E9, T9 human) |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | DONE (merge + fixup d42e44d) |
 | E7 | Online lobby UI in the overlay | D4, E6 | overlay+netplay | TODO |
-| E8 | Session start flow + sim-affecting settings sync | E6 | netplay | TODO |
+| E8 | Session start flow + sim-affecting settings sync | E6 | netplay | IN PROGRESS (task/E8, 2026-11-17) |
 | E9 | Disconnect → CPU/neutral pad, desync handling | E6 | netplay | TODO |
 | E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
@@ -65,6 +65,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | DONE (c5b51f6, fix 372d700) |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
 | X1 | Integer divide-by-zero crash (0xC0000094) in Mode Select: script `1350:START,1450:START,1550:START,1800:A,2300:A,2400:RIGHT,2420:RIGHT`, no pad; also on pre-E3 builds | – | game shim | DONE (merged; vectored handler emulates PPC divw) |
+| X2 | Attract/title frames ~690–810 differ in pixels between det-session runs (both renderers) though checksums match: find cause, check hash coverage | E4 | none (read-mostly) | IN PROGRESS (no branch unless a fix, 2026-11-17) |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
 Dependency graph (parallel lanes after P0.3):
@@ -818,3 +819,13 @@ Candidate fixes (choose from C1's results; likely several):
   recordings, replay matches). Hooks left for later: disc hash in HELLO still 0 (E8 → fst_crc32); session end = `exit()`
   codes 0/3/4 (E9 → back to lobby); err=-1 for non-human ports (E9 per mode); NET_STATS ignored (E7); CLI lobby in main()
   (E7/E8 need an in-game lobby). Untested (human): window drag during a session, "waiting for <name>" stall path.
+- **E4 merged (e6696cc)**: `tools/determinism/determinism.sh` (Git Bash; matrix of renderer x fps x variants, parallel,
+  every checksum log byte-compared to the recording's). Test hook `SMB2_TEST_FILL=<hex>` pre-fills arena + ARAM (T5).
+  Agent: 24/24 identical (race + mg x GL/D3D12 x 60/144 x 3). T1-T5 PASS (T1 weak: clock not changed), T6 dropped
+  (D-9), T7 code-read only (Competition course lists not unlock-gated), T8 (lockstep watchdog) -> E9 acceptance,
+  T9 (window drag) human. Orchestrator re-ran on fully merged online (D3+E6+X1+E4): race x 4 cells PASS; X1 repro exits 0
+  with one `[ppc-div0]` line; 3 smoke scripts PASS; two_instances vs 10.0.0.5 PASS. Full matrix takes ~12 min at 4 jobs.
+  Agent output left in `C:\Users\jacob\e4out` (outside the repo; user may delete).
+  D1's attract-frame pixel noise confirmed on both renderers at 60 fps, sim hash identical -> new task X2.
+- Next wave: D4 (overlay tabs), E8 (session start flow / in-game lobby API, relaunch), X2 (read-mostly). E9 after E8
+  (both rework netplay.c); E7 after D4 + E8.
