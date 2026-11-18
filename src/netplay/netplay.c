@@ -1323,12 +1323,13 @@ static void session_end(int code, const char *why, int room_alive)
     fflush(NULL);
 #ifdef _WIN32
     if ((s_resumed && !s_automated) || s_test_return) {
-        char notice[256];
+        char notice[256], rcode[SMB_NET_ROOM_CODE_LEN + 1];
         if (room_alive && !s_disconnected && s_peer && s_room_code[0] && (s_caps & SMB_CAP_LOBBY_RESUME)) {
+            snprintf(rcode, sizeof rcode, "%s", s_room_code);
             snprintf(notice, sizeof notice, "Back in the lobby - %s", why);
             s_active = 0;
             if (hand_over(0, notice)) {
-                printf("[netplay] restarted back into the room lobby (room %s kept)\n", s_room_code);
+                printf("[netplay] restarted back into the room lobby (room %s kept)\n", rcode);
                 fflush(NULL);
                 exit(0);
             }
