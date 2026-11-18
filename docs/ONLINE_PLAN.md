@@ -47,7 +47,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | C2e | README/docs for SDL3; pin version | C2d | docs | DONE (README build steps + credits done in C2c) |
 | D1 | Dear ImGui integration: **SDL3** + OpenGL backend | C2c | overlay | DONE (227973c) |
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | DONE (c2733e4) |
-| D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | IN PROGRESS (task/D3, 2026-11-17) |
+| D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | REVIEW (merged a214292; user checks gamepad nav + cursor hide) |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | TODO |
 | D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | TODO |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
@@ -55,7 +55,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E3 | Input record/replay + state checksum | E2 | input+shim | DONE (3e0e393) |
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | IN PROGRESS (task/E4, 2026-11-17) |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
-| E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | IN PROGRESS (task/E6, 2026-11-17) |
+| E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | DONE (merge + fixup d42e44d) |
 | E7 | Online lobby UI in the overlay | D4, E6 | overlay+netplay | TODO |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | TODO |
 | E9 | Disconnect → CPU/neutral pad, desync handling | E6 | netplay | TODO |
@@ -64,7 +64,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | REVIEW (merged 2f493e9; user checks Shift-start dialog) |
 | F2 | Build number in window title, log, overlay, and as the netplay build id | C2c (window title in platform_sdl2.c) | platform | DONE (c5b51f6, fix 372d700) |
 | E12 | (Stretch) Rollback feasibility spike | E4 | none | TODO |
-| X1 | Integer divide-by-zero crash (0xC0000094) in Mode Select: script `1350:START,1450:START,1550:START,1800:A,2300:A,2400:RIGHT,2420:RIGHT`, no pad; also on pre-E3 builds | – | game shim | IN PROGRESS (task/X1, 2026-11-17; found by E3 agent) |
+| X1 | Integer divide-by-zero crash (0xC0000094) in Mode Select: script `1350:START,1450:START,1550:START,1800:A,2300:A,2400:RIGHT,2420:RIGHT`, no pad; also on pre-E3 builds | – | game shim | DONE (merged; vectored handler emulates PPC divw) |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
 Dependency graph (parallel lanes after P0.3):
@@ -801,3 +801,20 @@ Candidate fixes (choose from C1's results; likely several):
   C2c Steam Controller REVIEW (drift / phantom C-stick?).
   Scripted path to a Main Game stage: docs/handoff/E3.md. New bug X1 (divide-by-zero in Mode Select).
 - Next wave started (Sonnet, worktrees `../wt/<ID>`): D3, E4, E6, X1. D3 and E6 may both touch platform_sdl2.c: second to merge rebases.
+- **D3 merged (a214292)**: F2 / Guide / Back+Start (0.5 s) toggle the ImGui overlay; ImGui gamepad nav; local pads
+  neutral while open (gate at the E3 hook, before inputsync, so record/netplay see neutral pads; replay unaffected);
+  offline pause in `src/game/shim/pc_overlay_pause.c` (hook in video_finish_frame); `--overlay-test-online`. Orchestrator:
+  D3D12 pause/resume check OK, all 3 smoke scripts PASS. Notes: F2's own opening frame can still leak one keyboard
+  frame (same as old F1); D5 must decide old-F1 vs new overlay interplay; D4 needs a gamepad-reachable Close.
+  **User REVIEW**: open with Back+Start / Guide, navigate with the pad, close; mouse cursor hides after 3 s.
+- **X1 merged**: Story Mode's menu screen 0x0C has 0 entries; `fn_3_32E0` does `cursor % 0` on LEFT/RIGHT. Harmless on
+  PPC (divw doesn't trap), 0xC0000094 on x86. Fix: x64 vectored exception handler in stubs_manual.c emulates PPC
+  (remainder = dividend, quotient 0/-1), logs first 8 hits as `[ppc-div0]`. Optional: decomp-side guard.
+- **E6 merged (d42e44d incl. fixup)**: `src/netplay/netplay.{c,h}` ENet lockstep client, ENet 1.3.18 in `third_party/enet/`,
+  flags `--server --create --join --name --delay` (+ test `--players --room-code-file --lobby-timeout`), blocking CLI lobby,
+  `--record` captures the exchanged bundle. Fixup: D3's stub file removed; `netplay_test_force_active` now lives in netplay.c.
+  Tests: `tools/netplay/two_instances.sh` (local Windows server via `tools/netplay/build_server_win.sh`, or `NP_SERVER=`).
+  Orchestrator on merged build: `NP_SERVER=10.0.0.5:7855 NP_FRAMES=3600` PASS (60 identical checksums, identical
+  recordings, replay matches). Hooks left for later: disc hash in HELLO still 0 (E8 → fst_crc32); session end = `exit()`
+  codes 0/3/4 (E9 → back to lobby); err=-1 for non-human ports (E9 per mode); NET_STATS ignored (E7); CLI lobby in main()
+  (E7/E8 need an in-game lobby). Untested (human): window drag during a session, "waiting for <name>" stall path.
