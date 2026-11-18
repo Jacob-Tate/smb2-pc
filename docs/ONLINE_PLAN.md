@@ -49,14 +49,14 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | D2 | Dear ImGui: Direct3D 12 backend | D1 | overlay+d3d12 | DONE (c2733e4) |
 | D3 | Overlay input routing + gamepad nav + open chord | D1 | overlay+input | REVIEW (merged a214292; user checks gamepad nav + cursor hide) |
 | D4 | Overlay tabs: Video/Graphics, Audio, Input, Game, Interface | D3 | overlay | REVIEW (merged cdabe8f; user checks look + pad nav) |
-| D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | IN PROGRESS (task/D5, 2026-11-17) |
+| D5 | Replace old F1 overlay; FPS counter + toasts | D4 | overlay | REVIEW (merged 4f4b48b; user checks F1, FPS corner, hot-plug toasts) |
 | E1 | Determinism audit (read-only report) | – (source only) | none | DONE (docs/handoff/E1.md; runtime tests T1–T9 go to E4) |
 | E2 | Deterministic session mode (`--det-session`) | E1 | game shim | DONE (f688666) |
 | E3 | Input record/replay + state checksum | E2 | input+shim | DONE (3e0e393) |
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | DONE (e6696cc; T8 → E9, T9 human) |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | DONE (merge + fixup d42e44d) |
-| E7 | Online lobby UI in the overlay | D4, E6, E8 | overlay+netplay | TODO |
+| E7 | Online lobby UI in the overlay | D4, D5, E6, E8 | overlay+netplay | IN PROGRESS (task/E7, 2026-11-17) |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | DONE (aa213ab; needs server redeploy for in-game start) |
 | E9 | Disconnect → CPU/neutral pad, desync handling | E6, E8 | netplay | IN PROGRESS (task/E9, 2026-11-17) |
 | E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
@@ -861,3 +861,11 @@ Candidate fixes (choose from C1's results; likely several):
   a server JOIN-check change. Relaunch is Windows-only.
 - Orchestrator: full suite on merged online (D4+E8+X2, 94bd488 build): boot_to_menu, party_race_2p, overlay_settings,
   record_replay, lobby_instances (local server), two_instances (10.0.0.5, old server) all PASS. E9 started (task/E9).
+- **D5 merged (4f4b48b)**: F1 toggles the ImGui overlay (F2 alias kept); old modal F1 overlay deleted from pc_settings_menu.c
+  (Options > Game Screen kept). `overlay_toast(OVERLAY_TOAST_INFO|SUCCESS|WARNING|ERROR, title, body)` (stacked top-right,
+  max 5, wall-clock fade) + FPS counter at the `show_fps` corner, drawn even with the overlay closed; no ImGui frame when
+  nothing is visible. Controller connect/disconnect toasts (not for pads present at start-up). Flag
+  `--overlay-test-toast FRAME:type:Title:Body`; README controls + docs/testing.md updated. Orchestrator: input_sdl2.c net diff
+  reviewed (a mid-branch commit had a bad sed, repaired), hot-plug/FPS screenshot viewed (D3D12) OK.
+  **User REVIEW**: F1 open/close, Show FPS corner setting, plug/unplug a controller -> toast. Screenshots in docs/handoff/D5/.
+- E7 started (task/E7) in parallel with E9 (both touch src/netplay/; E7 keeps netplay.c edits additive).
