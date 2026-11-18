@@ -56,9 +56,9 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | E4 | Local determinism test (two runs, same checksums) | E3 | tools | DONE (e6696cc; T8 → E9, T9 human) |
 | E5 | Protocol header + relay server (port from partyboard) | E1 | server | DONE (1f9afa1) |
 | E6 | Netplay client (ENet, lockstep) | E3, E5 | netplay | DONE (merge + fixup d42e44d) |
-| E7 | Online lobby UI in the overlay | D4, D5, E6, E8 | overlay+netplay | IN PROGRESS (task/E7, 2026-11-17) |
+| E7 | Online lobby UI in the overlay | D4, D5, E6, E8 | overlay+netplay | REVIEW (merged 3a234aa; user checks typing, pad letter picker, copy code, Leave) |
 | E8 | Session start flow + sim-affecting settings sync | E6 | netplay | DONE (aa213ab; needs server redeploy for in-game start) |
-| E9 | Disconnect → CPU/neutral pad, desync handling | E6, E8 | netplay | IN PROGRESS (task/E9, 2026-11-17) |
+| E9 | Disconnect → CPU/neutral pad, desync handling | E6, E8 | netplay | DONE (merged; needs server redeploy for back-to-lobby) |
 | E10 | Server Docker image, CI, Portainer stack | E5 | server | DONE (ce09eff; CI green, image published) – deploy is USER |
 | E11 | Two-PC LAN test + internet test (user) | E7, E8, E9, E10 | – | USER |
 | F1 | "Friend build": single self-extracting `SMB2.exe` (like partyboard's) | P0.3 | packaging | REVIEW (merged 2f493e9; user checks Shift-start dialog) |
@@ -67,6 +67,7 @@ Statuses: `TODO` · `IN PROGRESS (<branch>, <date>)` · `REVIEW` · `DONE (<comm
 | X1 | Integer divide-by-zero crash (0xC0000094) in Mode Select: script `1350:START,1450:START,1550:START,1800:A,2300:A,2400:RIGHT,2420:RIGHT`, no pad; also on pre-E3 builds | – | game shim | DONE (merged; vectored handler emulates PPC divw) |
 | X2 | Attract/title frames ~690–810 differ in pixels between det-session runs (both renderers) though checksums match: find cause, check hash coverage | E4 | none (read-mostly) | DONE (report docs/handoff/X2.md; render-only, netplay unaffected) |
 | X3 | (Low) GL persistent vertex ring hazard in render_opengl.c (ring_alloc/ring_write/ring_write_rect; suspect a_uvrect reading stale rect_vbo on draws without rects, or coherent-map write timing) causes frame-to-frame pixel noise; then audit render_d3d12.c's upload ring | X2 | render | TODO |
+| E7b | Online tab polish: host-only "End game for everyone" (`netplay_end_game()`, E9), shorter room view (Leave/Disconnect below the fold), lower server ENet peer timeout so drops are noticed faster than ~6 s | E7, E9 | overlay+netplay+server | TODO |
 | E13 | (Stretch) Per-player full-screen view online | E11 | render | TODO |
 
 Dependency graph (parallel lanes after P0.3):
@@ -871,3 +872,22 @@ Candidate fixes (choose from C1's results; likely several):
 - E7 started (task/E7) in parallel with E9 (both touch src/netplay/; E7 keeps netplay.c edits additive).
 - Orchestrator: suite on merged online with D5 (4f4b48b build): boot_to_menu, party_race_2p, overlay_settings, record_replay,
   lobby_instances (local server) all PASS.
+- **E9 merged**: drops -> port neutral + `err=-1` on the same poll everywhere (server humanMask; E1 #11: `err` only read by
+  menus, in-game control ignores it), "<name> left the game" event. Desync / host end / last-left -> every client restarts
+  into an offline process that RESUMEs into the SAME room (lobby); lost server / 30 s timeout -> offline with a notice.
+  `netplay_end_game()`, `netplay_lobby_return()`; E8's relaunch is now shared `hand_over()`. Server: `SMB_CAP_LOBBY_RESUME`,
+  RELAUNCHING/RESUME in the lobby phase, START refused while a member restarts; protocol v1, layouts unchanged (additive).
+  Test hooks `SMB_NETPLAY_TEST_DROP/DESYNC/STALL/ENDGAME`; script `tools/netplay/disconnects.sh` (drop, desync, endgame,
+  stall 12 s without watchdog = E4 T8, 30 s timeout). server_test.sh 106 checks. Orchestrator re-ran drop + desync from the
+  E9 build: PASS. Hard-killed peers are noticed after the server's ENet timeout (~6 s).
+- **E7 merged (3a234aa)**: Online tab in `src/overlay/tab_online.cpp` (server + name remembered in settings.dat as
+  `np_server`/`np_name`, connect, host with delay, big room code + copy, join by code with keyboard or pad letter picker,
+  P1-P4 with ping/host, port pick, Start, Leave/Disconnect, in-session info + Leave session). `online_tick()` turns lobby
+  events into toasts even with the overlay closed and closes the overlay when the game start restarts the exe (otherwise the
+  offline pause blocked the restart). Title hint "F1 / Back+Start: Online" on PRESS START (main_mode 0, sub_mode 8).
+  Modal screens / disc change / language locked while online. Test flag `--overlay-test-online-script`, script
+  `tools/netplay/online_ui_instances.sh`; PNGs in docs/handoff/E7/. Merge with E9: conflicts in main.c and netplay.c strip
+  lists resolved (keep both); `netplay_session_leave()` now passes `room_alive=0` (leaving = out of the room).
+  **User REVIEW**: type server/name/code with keyboard (Ctrl+V, Enter/Esc), pad letter picker, Copy code, Leave session.
+- **Server redeploy is now required** for in-game start (E8) and back-to-lobby (E9): push `online` -> CI publishes the
+  image -> update the Portainer stack `smb2`. Then E11 (two-PC test).
