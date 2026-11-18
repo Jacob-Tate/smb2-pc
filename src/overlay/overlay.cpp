@@ -88,7 +88,10 @@ bool overlay_init(SDL_Window* window, OverlayRenderer renderer) {
     }
     ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);   // any player's pad can navigate
     s_ready = true;
-    for (int i = 0; i < s_test_nsets; i++) pcs_test_set(s_test_sets[i]);   // same setters as the UI rows
+    for (int i = 0; i < s_test_nsets; i++) {   // same setters as the UI rows
+        if (!strncmp(s_test_sets[i], "tab=", 4)) ovl::select_tab(s_test_sets[i] + 4);
+        else pcs_test_set(s_test_sets[i]);
+    }
     if (s_start_open) overlay_set_open(true);
     printf("[overlay] Dear ImGui %s ready (%s)\n", IMGUI_VERSION,
            renderer == OVERLAY_RENDERER_GL ? "OpenGL" : "Direct3D 12");

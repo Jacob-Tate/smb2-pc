@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -109,7 +110,7 @@ void draw_tab_bar() {
     ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0x00 / 255.f, 0xb4 / 255.f, 0xfa / 255.f, 0.15f));
     ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0x00 / 255.f, 0xb4 / 255.f, 0xfa / 255.f, 0.25f));
-    const float x0 = ImGui::GetCursorScreenPos().x;
+    const float x0 = ImGui::GetCursorScreenPos().x, y0 = ImGui::GetCursorScreenPos().y;
     const float full = ImGui::GetContentRegionAvail().x;
     for (int i = 0; i <= kNumTabs; i++) {
         const bool is_close = i == kNumTabs;
@@ -119,7 +120,7 @@ void draw_tab_bar() {
         for (; name[n] && n < 31; n++) up[n] = (name[n] >= 'a' && name[n] <= 'z') ? (char)(name[n] - 32) : name[n];
         up[n] = 0;
         const float tw = ImGui::CalcTextSize(up).x + pad * 2;
-        if (is_close) ImGui::SetCursorScreenPos(ImVec2(x0 + full - tw, ImGui::GetCursorScreenPos().y));
+        if (is_close) ImGui::SetCursorScreenPos(ImVec2(x0 + full - tw, y0));
         else if (i > 0) ImGui::SameLine();
         ImGui::PushID(i);
         const ImVec2 p = ImGui::GetCursorScreenPos();
@@ -200,6 +201,11 @@ void on_open() {
     s_help_title[0] = s_help_text[0] = 0;
 }
 
+void select_tab(const char* name) {
+    for (int i = 0; i < kNumTabs; i++)
+        if (!strcasecmp(kTabs[i].name, name)) { s_tab = i; s_focus_first_row = true; s_first_row_done = false; }
+}
+
 void request_close() { s_close = true; }
 bool close_requested() { bool c = s_close; s_close = false; return c; }
 
@@ -243,7 +249,7 @@ void build() {
     const float left_w = ww * 0.58f;
     ImGui::SetCursorPos(ImVec2(0, body_y));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(u * 1.2f, u * 1.0f));
-    const ImGuiChildFlags cf = ImGuiChildFlags_NavFlattened;
+    const ImGuiChildFlags cf = ImGuiChildFlags_NavFlattened | ImGuiChildFlags_AlwaysUseWindowPadding;
     if (ImGui::BeginChild("##left", ImVec2(left_w, body_h), cf, ImGuiWindowFlags_None)) {
         kTabs[s_tab].fn();
         ImGui::Dummy(ImVec2(0, u * 0.5f));

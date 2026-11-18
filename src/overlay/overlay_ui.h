@@ -20,6 +20,7 @@ void tab_interface();
 // ---- shell (overlay_ui.cpp) ----
 void build();                 // the whole overlay UI for this frame (call between NewFrame and Render)
 void on_open();               // overlay just opened: first tab row gets focus
+void select_tab(const char* name);   // test hook: --overlay-test-set tab=<Name>
 void request_close();         // close the overlay after this frame
 bool close_requested();       // polled by overlay.cpp (consumes the flag)
 void style_init();            // fonts + colours; call once after CreateContext, before the first frame
