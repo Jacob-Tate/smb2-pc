@@ -8,7 +8,7 @@
  *  - Quitting: pc_quit_request() only sets a flag.  pc_quit_poll() keeps the
  *    game loop running until no memory card job can still touch the card (a
  *    job only waiting for a button press on its result box counts as done),
- *    then saves settings.dat and exits(0).  SDL_QUIT takes the same path.
+ *    then saves settings.dat and exits(0).  SDL_EVENT_QUIT takes the same path.
  *  - Strings: one per game locale (0 en, 1 de, 2 fr, 3 es, 4 it, 5 ja), drawn
  *    with the menu font (font 3). */
 #include "gc_intrinsics.h"

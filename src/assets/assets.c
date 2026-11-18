@@ -1,7 +1,7 @@
 /* Generic asset manager for the assets/ folder (include/assets.h).  Disc
  * files go through dvd_shim.c. */
 #include "assets.h"
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -278,11 +278,10 @@ void fs_free_file(void* data) {
 }
 
 char* fs_get_base_path(void) {
-    char* base = SDL_GetBasePath();
+    /* SDL3: the base path is owned by SDL and must NOT be freed */
+    const char* base = SDL_GetBasePath();
     if (base) {
-        char* result = strdup(base);
-        SDL_free(base);
-        return result;
+        return strdup(base);
     }
     return strdup(".");
 }

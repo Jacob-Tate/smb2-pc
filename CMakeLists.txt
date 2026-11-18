@@ -80,34 +80,23 @@ if(MSVC)
     endif()
 endif()
 
-# Find dependencies - try find_package first, fall back to sdl2-config
-find_package(SDL2 QUIET)
-if(NOT SDL2_FOUND)
-    find_program(SDL2_CONFIG sdl2-config)
-    if(SDL2_CONFIG)
-        execute_process(COMMAND ${SDL2_CONFIG} --cflags OUTPUT_VARIABLE SDL2_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-        execute_process(COMMAND ${SDL2_CONFIG} --libs OUTPUT_VARIABLE SDL2_LIBS OUTPUT_STRIP_TRAILING_WHITESPACE)
-        set(SDL2_INCLUDE_DIRS ${SDL2_CFLAGS})
-        set(SDL2_LIBRARIES ${SDL2_LIBS})
-        set(SDL2_FOUND TRUE)
+# SDL3 (statically linked for the Windows cross builds). Build the static libs
+# with tools/build_sdl3_mingw.sh into mingw_deps/sdl3/<triplet>.
+if(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    get_filename_component(_sdl3_triplet "${MINGW_DEPS_DIR}" NAME)
+    set(SDL3_DEPS_DIR ${CMAKE_SOURCE_DIR}/mingw_deps/sdl3/${_sdl3_triplet})
+    if(NOT EXISTS ${SDL3_DEPS_DIR}/lib/libSDL3.a OR NOT EXISTS ${SDL3_DEPS_DIR}/include/SDL3/SDL.h)
+        message(FATAL_ERROR "SDL3 not found in ${SDL3_DEPS_DIR}. "
+            "Run tools/build_sdl3_mingw.sh first (it installs libSDL3.a and the headers there).")
     endif()
-endif()
-
-# For cross-compilation, also check MinGW deps
-if(CMAKE_CROSSCOMPILING AND NOT SDL2_FOUND AND EXISTS ${MINGW_DEPS_DIR})
-    find_path(SDL2_INCLUDE_DIR SDL.h PATHS ${MINGW_DEPS_DIR}/include NO_DEFAULT_PATH)
-    find_library(SDL2_LIBRARY SDL2 PATHS ${MINGW_DEPS_DIR}/lib NO_DEFAULT_PATH)
-    find_library(SDL2MAIN_LIBRARY SDL2main PATHS ${MINGW_DEPS_DIR}/lib NO_DEFAULT_PATH)
-    if(SDL2_INCLUDE_DIR AND SDL2_LIBRARY AND SDL2MAIN_LIBRARY)
-        set(SDL2_INCLUDE_DIRS ${SDL2_INCLUDE_DIR})
-        set(SDL2_LIBRARIES ${SDL2_LIBRARY} ${SDL2MAIN_LIBRARY})
-        set(SDL2_FOUND TRUE)
-        message(STATUS "Found SDL2 in MinGW deps")
+    set(SDL3_INCLUDE_DIRS ${SDL3_DEPS_DIR}/include)
+    set(SDL3_LIBRARIES ${SDL3_DEPS_DIR}/lib/libSDL3.a)
+    message(STATUS "Using SDL3 from: ${SDL3_DEPS_DIR}")
+else()
+    find_package(SDL3 REQUIRED CONFIG)
+    if(TARGET SDL3::SDL3)
+        set(SDL3_LIBRARIES SDL3::SDL3)
     endif()
-endif()
-
-if(NOT SDL2_FOUND)
-    message(FATAL_ERROR "SDL2 not found. Please install libsdl2-dev")
 endif()
 
 # Find OpenGL
@@ -127,7 +116,7 @@ endif()
 # Include directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
-    ${SDL2_INCLUDE_DIRS}
+    ${SDL3_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIR}
     ${MINIAUDIO_INCLUDE_DIR}
 )
@@ -436,23 +425,17 @@ endif()
 
 # Link libraries
 if(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    # Link SDL2 statically so the exe runs without SDL2.dll beside it
-    if(EXISTS ${MINGW_DEPS_DIR}/lib/libSDL2.a)
-        set(SDL2_LIBRARIES
-            mingw32
-            ${MINGW_DEPS_DIR}/lib/libSDL2main.a
-            ${MINGW_DEPS_DIR}/lib/libSDL2.a
-        )
-    endif()
+    # SDL3 is linked statically (libSDL3.a): no SDL3.dll beside the exe. Its Windows system
+    # libs are all in the list below (see docs/handoff/C2b.md).
     target_link_libraries(smb2_pc_port
-        ${SDL2_LIBRARIES}
+        ${SDL3_LIBRARIES}
         opengl32
         m kernel32 user32 gdi32 winmm imm32 ole32 oleaut32
         version uuid advapi32 setupapi shell32 comdlg32 dinput8 winhttp
     )
 else()
     target_link_libraries(smb2_pc_port
-        ${SDL2_LIBRARIES}
+        ${SDL3_LIBRARIES}
         ${OPENGL_LIBRARIES}
         ${CMAKE_DL_LIBS}
         m
@@ -471,10 +454,6 @@ if(WIN32)
     target_compile_definitions(smb2_pc_port PRIVATE SMB2_HAVE_D3D12)
 endif()
 
-# Windows cross-compilation needs main=SDL_main
-if(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    target_compile_definitions(smb2_pc_port PRIVATE main=SDL_main)
-endif()
 
 # Copy assets directory on build
 add_custom_command(TARGET smb2_pc_port POST_BUILD

@@ -17,7 +17,7 @@
 #define MA_NO_DECODING
 #define MA_NO_ENCODING
 #include <miniaudio.h>
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -142,7 +142,7 @@ static float s_limMin = 1.0f;           /* deepest limiter gain */
 static unsigned s_limTicks;             /* ticks with the limiter engaged */
 
 static SDL_Thread *s_thread;
-static SDL_sem *s_sem;
+static SDL_Semaphore *s_sem;
 static atomic_int s_quit;
 
 static ma_context s_ctx;
@@ -562,7 +562,7 @@ static int worker_main(void *arg)
 {
     (void)arg;
     while (!atomic_load(&s_quit)) {
-        SDL_SemWaitTimeout(s_sem, 50);
+        SDL_WaitSemaphoreTimeout(s_sem, 50);
         worker_process();
     }
     worker_process();
@@ -681,7 +681,7 @@ void adsp_flush(void)
         return;
     atomic_store_explicit(&s_qPub, s_qHead, memory_order_release);
     if (s_sem)
-        SDL_SemPost(s_sem);
+        SDL_SignalSemaphore(s_sem);
 }
 
 void adsp_set_master(float g)
@@ -749,7 +749,7 @@ void audio_shutdown(void)
     adsp_flush();
     if (s_thread) {
         atomic_store(&s_quit, 1);
-        SDL_SemPost(s_sem);
+        SDL_SignalSemaphore(s_sem);
         SDL_WaitThread(s_thread, NULL);
         s_thread = NULL;
     }

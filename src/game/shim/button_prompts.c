@@ -35,12 +35,12 @@
 extern const char *g_button_style_arg;   /* main.c: --button-style */
 void pc_textdraw_reload_button_glyphs(void); /* textdraw.c */
 
-/* SDL_GameControllerType values (SDL 2.30), kept local so this file does not
- * need the SDL headers. */
+/* SDL_GamepadType values (SDL 3.4), kept local so this file does not need the
+ * SDL headers.  (SDL2's Luna/Stadia/Shield types are gone: they report as
+ * STANDARD, which keeps the GameCube glyphs like any unknown pad.) */
 enum {
-    SDLT_XBOX360 = 1, SDLT_XBOXONE = 2, SDLT_PS3 = 3, SDLT_PS4 = 4, SDLT_SWITCH_PRO = 5,
-    SDLT_PS5 = 7, SDLT_LUNA = 8, SDLT_STADIA = 9, SDLT_SHIELD = 10,
-    SDLT_JOYCON_L = 11, SDLT_JOYCON_R = 12, SDLT_JOYCON_PAIR = 13,
+    SDLT_XBOX360 = 2, SDLT_XBOXONE = 3, SDLT_PS3 = 4, SDLT_PS4 = 5, SDLT_PS5 = 6,
+    SDLT_SWITCH_PRO = 7, SDLT_JOYCON_L = 8, SDLT_JOYCON_R = 9, SDLT_JOYCON_PAIR = 10,
 };
 
 static const char *const s_style_names[PCB_STYLE_COUNT] = {
@@ -94,9 +94,7 @@ static void resolve_style(int *style, int *alt_start)
     case SDLT_PS5:     *style = PCB_STYLE_PS5; return;
     case SDLT_XBOX360: *alt_start = 1; /* fall through */
     case SDLT_XBOXONE:
-    case SDLT_LUNA:
-    case SDLT_STADIA:
-    case SDLT_SHIELD:  *style = PCB_STYLE_XBOX; return;   /* Xbox face layout */
+                       *style = PCB_STYLE_XBOX; return;   /* Xbox face layout */
     case SDLT_SWITCH_PRO:
     case SDLT_JOYCON_L:
     case SDLT_JOYCON_R:

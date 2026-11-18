@@ -337,7 +337,7 @@ void video_finish_frame(void)
     input_poll_gc_pads();
     platform_poll_events();
     {
-        /* window closed (SDL_QUIT) or Quit to Desktop chosen in a menu:
+        /* window closed (SDL_EVENT_QUIT) or Quit to Desktop chosen in a menu:
          * pc_quit.c exits once no memory card job is running */
         extern void pc_quit_request(const char *reason);
         extern void pc_quit_poll(void);

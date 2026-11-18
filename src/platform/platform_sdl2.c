@@ -1,4 +1,4 @@
-/* SDL2 Platform Backend */
+/* SDL3 Platform Backend (file name kept from the SDL2 days) */
 #include "platform.h"
 #include "iso.h"
 #include "perf.h"
@@ -9,9 +9,7 @@
 #include "gamedata.h"
 #include "disc_icon.h"
 #include "install_mode.h"
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_video.h>
-#include <SDL2/SDL_syswm.h>
+#include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -35,7 +33,8 @@ static PlatformConfig s_cfg_copy;
 /* Create the window (and for GL the context).  A D3D12 window is a plain
  * window: the backend gets its HWND through platform_sdl_window(). */
 static bool sdl2_create_window(SDL2BackendData* data, const PlatformConfig* config, bool opengl) {
-    uint32_t window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    /* No SDL_WINDOW_HIGH_PIXEL_DENSITY: like SDL2 on Windows, window sizes stay in pixels. */
+    SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE;
     if (opengl) {
         /* OpenGL attributes */
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -52,15 +51,21 @@ static bool sdl2_create_window(SDL2BackendData* data, const PlatformConfig* conf
         window_flags |= SDL_WINDOW_OPENGL;
     }
     if (config->fullscreen) {
-        window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        window_flags |= SDL_WINDOW_FULLSCREEN;   /* no fullscreen mode set = borderless desktop */
     }
 
-    data->window = SDL_CreateWindow(
-        config->window_title ? config->window_title : "SMB2",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        config->window_width, config->window_height,
-        window_flags
-    );
+    {
+        SDL_PropertiesID props = SDL_CreateProperties();
+        SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING,
+                              config->window_title ? config->window_title : "SMB2");
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, SDL_WINDOWPOS_CENTERED);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, SDL_WINDOWPOS_CENTERED);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, config->window_width);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, config->window_height);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, (Sint64)window_flags);
+        data->window = SDL_CreateWindowWithProperties(props);
+        SDL_DestroyProperties(props);
+    }
 
     printf("DEBUG: SDL_CreateWindow done (%s)\n", opengl ? "OpenGL" : "D3D12");
     fflush(stdout);
@@ -102,15 +107,11 @@ static bool sdl2_init(PlatformContext* ctx, const PlatformConfig* config) {
     s_cfg_copy = *config;
     s_cfg = &s_cfg_copy;
 
-    /* Per-monitor DPI awareness, before the video subsystem starts: without
-     * it Windows display scaling shrinks the desktop we see (3840x2160 at 150%
-     * looks like 2560x1440) and stretches our output back up.
-     * SDL_WINDOW_ALLOW_HIGHDPI alone does nothing on Windows. */
-    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+    /* SDL3 declares per-monitor-v2 DPI awareness itself when video initialises. */
 
     printf("DEBUG: SDL_Init...\n");
     fflush(stdout);
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         free(data);
         return false;
@@ -132,7 +133,7 @@ static bool sdl2_init(PlatformContext* ctx, const PlatformConfig* config) {
     data->initialized = true;
     ctx->backend_data = data;
 
-    printf("SDL2 platform initialized: %dx%d %s\n",
+    printf("SDL3 platform initialized: %dx%d %s\n",
            config->window_width, config->window_height,
            config->fullscreen ? "(fullscreen)" : "");
 
@@ -144,7 +145,7 @@ static void sdl2_shutdown(PlatformContext* ctx) {
     if (!data) return;
 
     if (data->gl_context) {
-        SDL_GL_DeleteContext(data->gl_context);
+        SDL_GL_DestroyContext(data->gl_context);
     }
     if (data->window) {
         SDL_DestroyWindow(data->window);
@@ -161,39 +162,38 @@ static void sdl2_poll_events(PlatformContext* ctx) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
-            case SDL_QUIT:
+            case SDL_EVENT_QUIT:
                 data->should_close = true;
                 break;
-            case SDL_WINDOWEVENT:
-                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-                    pcs_on_window_resized();   /* renderer follows the drawable */
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                pcs_on_window_resized();   /* renderer follows the drawable */
                 break;
-            case SDL_KEYDOWN:
+            case SDL_EVENT_KEY_DOWN:
                 /* PC port hotkeys (game buttons are read from the keyboard
                  * state in input_poll_gc_pads) */
-                if (!event.key.repeat && event.key.keysym.sym == SDLK_F1)
+                if (!event.key.repeat && event.key.key == SDLK_F1)
                     pc_settings_overlay_request();
-                else if (!event.key.repeat && event.key.keysym.sym == SDLK_RETURN &&
-                         (event.key.keysym.mod & KMOD_ALT))
+                else if (!event.key.repeat && event.key.key == SDLK_RETURN &&
+                         (event.key.mod & SDL_KMOD_ALT))
                     pcs_toggle_fullscreen();
                 break;
-            case SDL_KEYUP:
+            case SDL_EVENT_KEY_UP:
                 break;
-            /* Pad hot-plugging (input_sdl2.c).  Pad state itself is polled
-             * once per frame in input_poll_gc_pads.  ADDED carries the device
-             * index, REMOVED the instance id; a mapped controller sends both
-             * the JOY and the CONTROLLER event, which the input code dedupes. */
-            case SDL_CONTROLLERDEVICEADDED:
-                input_on_device_added(event.cdevice.which);
+            /* Pad hot-plugging (input_sdl2.c).  Pad state itself is polled once per
+             * frame in input_poll_gc_pads.  SDL3 events all carry the joystick
+             * instance id; a mapped pad sends both the JOYSTICK and the GAMEPAD
+             * event, which the input code dedupes. */
+            case SDL_EVENT_GAMEPAD_ADDED:
+                input_on_device_added((unsigned)event.gdevice.which);
                 break;
-            case SDL_JOYDEVICEADDED:
-                input_on_device_added(event.jdevice.which);
+            case SDL_EVENT_JOYSTICK_ADDED:
+                input_on_device_added((unsigned)event.jdevice.which);
                 break;
-            case SDL_CONTROLLERDEVICEREMOVED:
-                input_on_device_removed(event.cdevice.which);
+            case SDL_EVENT_GAMEPAD_REMOVED:
+                input_on_device_removed((unsigned)event.gdevice.which);
                 break;
-            case SDL_JOYDEVICEREMOVED:
-                input_on_device_removed(event.jdevice.which);
+            case SDL_EVENT_JOYSTICK_REMOVED:
+                input_on_device_removed((unsigned)event.jdevice.which);
                 break;
         }
     }
@@ -445,12 +445,13 @@ void platform_present_subframe(int j) {
 /* refresh rate of the window's display (0 = unknown) */
 int platform_display_refresh_hz(void) {
     SDL2BackendData* data = (SDL2BackendData*)g_platform.backend_data;
-    SDL_DisplayMode m;
+    const SDL_DisplayMode* m;
     if (!data || !data->window) return 0;
-    if (SDL_GetWindowDisplayMode(data->window, &m) == 0 && m.refresh_rate > 0)
-        return m.refresh_rate;
-    if (SDL_GetCurrentDisplayMode(SDL_GetWindowDisplayIndex(data->window), &m) == 0)
-        return m.refresh_rate;
+    m = SDL_GetWindowFullscreenMode(data->window);   /* NULL = borderless / windowed */
+    if (!m || m->refresh_rate <= 0)
+        m = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(data->window));
+    if (m && m->refresh_rate > 0)
+        return (int)(m->refresh_rate + 0.5f);
     return 0;
 }
 
@@ -519,7 +520,7 @@ static void sdl2_get_window_size(PlatformContext* ctx, int* w, int* h) {
 static void sdl2_set_fullscreen(PlatformContext* ctx, bool fullscreen) {
     SDL2BackendData* data = (SDL2BackendData*)ctx->backend_data;
     if (data && data->window) {
-        SDL_SetWindowFullscreen(data->window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        SDL_SetWindowFullscreen(data->window, fullscreen);   /* mode NULL = borderless desktop */
     }
 }
 
@@ -528,16 +529,16 @@ static bool sdl2_show_resolution_picker(PlatformContext* ctx, int* out_w, int* o
     printf("\n=== Resolution Picker ===\n");
     printf("Available display modes:\n");
 
-    int num_displays = SDL_GetNumVideoDisplays();
-    for (int i = 0; i < num_displays; i++) {
-        int num_modes = SDL_GetNumDisplayModes(i);
-        for (int m = 0; m < num_modes; m++) {
-            SDL_DisplayMode mode;
-            if (SDL_GetDisplayMode(i, m, &mode) == 0) {
-                printf("  Display %d: %dx%d @ %dHz\n", i, mode.w, mode.h, mode.refresh_rate);
-            }
-        }
+    int num_displays = 0;
+    SDL_DisplayID* displays = SDL_GetDisplays(&num_displays);
+    for (int i = 0; displays && i < num_displays; i++) {
+        int num_modes = 0;
+        SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(displays[i], &num_modes);
+        for (int m = 0; modes && m < num_modes; m++)
+            printf("  Display %d: %dx%d @ %.0fHz\n", i, modes[m]->w, modes[m]->h, modes[m]->refresh_rate);
+        SDL_free(modes);
     }
+    SDL_free(displays);
 
     printf("\nEnter width (or 0 for default %d): ", *out_w);
     char input[64];
@@ -1146,15 +1147,14 @@ void platform_drawable_size(int* w, int* h) {
     SDL2BackendData* data = (SDL2BackendData*)g_platform.backend_data;
     *w = *h = 0;
     if (!data || !data->window) return;
-    if (data->opengl) SDL_GL_GetDrawableSize(data->window, w, h);
-    else SDL_GetWindowSizeInPixels(data->window, w, h);
+    SDL_GetWindowSizeInPixels(data->window, w, h);
 }
 
 /* Replace the window with one for the other API (renderer fallback). */
 bool platform_recreate_window(bool opengl) {
     SDL2BackendData* data = (SDL2BackendData*)g_platform.backend_data;
     if (!data || !s_cfg) return false;
-    if (data->gl_context) { SDL_GL_DeleteContext(data->gl_context); data->gl_context = NULL; }
+    if (data->gl_context) { SDL_GL_DestroyContext(data->gl_context); data->gl_context = NULL; }
     if (data->window) { SDL_DestroyWindow(data->window); data->window = NULL; }
     if (!sdl2_create_window(data, s_cfg, opengl)) return false;
     platform_apply_window_icon();
@@ -1218,7 +1218,7 @@ bool platform_recover_gamedata(const char* why) {
             SDL_MESSAGEBOX_WARNING, (SDL_Window*)platform_sdl_window(),
             "SMB2 - game data missing", text, 2, buttons, NULL };
         int which = 0;
-        if (SDL_ShowMessageBox(&box, &which) == 0 && which != 1) return false;
+        if (SDL_ShowMessageBox(&box, &which) && which != 1) return false;
     }
     for (;;) {
         char* path;
@@ -1297,9 +1297,9 @@ void platform_apply_window_icon(void) {
     if (!have) return;
 #ifdef _WIN32
     {
-        SDL_SysWMinfo wm;
-        SDL_VERSION(&wm.version);
-        if (SDL_GetWindowWMInfo(win, &wm) && wm.subsystem == SDL_SYSWM_WINDOWS) {
+        HWND hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(win),
+                                                 SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+        if (hwnd) {
             int which;
             for (which = 0; which < 2; which++) {
                 int sz = GetSystemMetrics(which ? SM_CXSMICON : SM_CXICON);
@@ -1347,7 +1347,7 @@ void platform_apply_window_icon(void) {
                 DeleteObject(color);
                 DeleteObject(mask);
                 if (icon)
-                    SendMessage(wm.info.win.window, WM_SETICON, which ? ICON_SMALL : ICON_BIG,
+                    SendMessage(hwnd, WM_SETICON, which ? ICON_SMALL : ICON_BIG,
                                 (LPARAM)icon);
             }
             printf("[icon] window icon set from the disc's memory-card icon\n");
@@ -1359,10 +1359,10 @@ void platform_apply_window_icon(void) {
         static uint8_t big[64 * 64 * 4];
         SDL_Surface* s;
         disc_icon_render(px, 64, big);
-        s = SDL_CreateRGBSurfaceWithFormatFrom(big, 64, 64, 32, 64 * 4, SDL_PIXELFORMAT_RGBA32);
+        s = SDL_CreateSurfaceFrom(64, 64, SDL_PIXELFORMAT_RGBA32, big, 64 * 4);
         if (s) {
             SDL_SetWindowIcon(win, s);
-            SDL_FreeSurface(s);
+            SDL_DestroySurface(s);
         }
     }
 }

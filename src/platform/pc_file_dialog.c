@@ -7,8 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_syswm.h>
+#include <SDL3/SDL.h>
 #ifdef _WIN32
 #include <windows.h>
 #include <commdlg.h>
@@ -54,13 +53,10 @@ int pc_file_dialog_test_active(void)
 static HWND game_hwnd(void)
 {
     SDL_Window *win = (SDL_Window *)platform_sdl_window();
-    SDL_SysWMinfo wm;
     if (!win)
         return NULL;
-    SDL_VERSION(&wm.version);
-    if (SDL_GetWindowWMInfo(win, &wm) && wm.subsystem == SDL_SYSWM_WINDOWS)
-        return wm.info.win.window;
-    return NULL;
+    return (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(win),
+                                        SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
 }
 
 /* UTF-16 path -> ANSI code page (what fopen() uses); the 8.3 name when the
@@ -92,7 +88,7 @@ static int dialog_begin(void)
     SDL_Window *win = (SDL_Window *)platform_sdl_window();
     int minimized = 0;
     g_shim_watchdog_hold++;
-    if (win && (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN) {
+    if (win && (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN) && SDL_GetWindowFullscreenMode(win)) {
         SDL_MinimizeWindow(win);
         minimized = 1;
     }

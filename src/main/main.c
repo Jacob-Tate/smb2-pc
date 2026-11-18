@@ -9,7 +9,7 @@
 #include "install_mode.h"
 #include "pc_update.h"
 #include "pc_card.h"
-#include <SDL2/SDL_hints.h>
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,11 +90,8 @@ void show_resolution_picker(void) {
 }
 
 int main(int argc, char* argv[]) {
-    /* Per-monitor DPI awareness must be declared before anything initialises
-     * SDL video (pc_settings sizes the default window early).  Without it,
-     * Windows display scaling (e.g. 150% on a 3840x2160 screen) presents a
-     * scaled 2560x1440 desktop and stretches our output back up. */
-    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+    /* SDL3 declares per-monitor-v2 DPI awareness itself when video initialises
+     * (SDL_HINT_WINDOWS_DPI_AWARENESS no longer exists), before any window is sized. */
 #ifdef SMB2_LINK_GAME
     extern void shim_install_crash_handler(void);
     extern void shim_start_watchdog(void);

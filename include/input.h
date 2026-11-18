@@ -62,17 +62,17 @@ void g_calc_frames_since_last_input_change(void);
 void merge_inputs(void);
 
 /* Platform-specific: called from platform layer when events arrive */
-/* Pad hot-plugging: SDL device index of a new joystick / controller, SDL
- * instance id of a removed one (platform_sdl2.c event loop). */
-void input_on_device_added(int device_index);
-void input_on_device_removed(int instance_id);
+/* Pad hot-plugging: SDL joystick instance id of a new joystick / gamepad and of
+ * a removed one (platform_sdl2.c event loop). */
+void input_on_device_added(unsigned int instance_id);
+void input_on_device_removed(unsigned int instance_id);
 void input_on_key_down(int keycode);
 void input_on_key_up(int keycode);
 void input_on_gamepad_button_down(int controller, int button);
 void input_on_gamepad_button_up(int controller, int button);
 void input_on_gamepad_axis(int controller, int axis, float value);
 
-/* Gamepad mapping (SDL_GameControllerButton) */
+/* Gamepad mapping (SDL_GamepadButton order) */
 typedef enum {
     INPUT_GAMEPAD_A = 0,
     INPUT_GAMEPAD_B,

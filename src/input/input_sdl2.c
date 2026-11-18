@@ -1,4 +1,4 @@
-/* SDL2 Input Backend
+/* SDL3 Input Backend (gamepad API; file name kept from the SDL2 days)
  *
  * Controllers are mapped onto the GameCube pad by button position (Nintendo
  * pads by label, see below):
@@ -9,10 +9,11 @@
  *   LB (L1, L)                 = unused (the GC pad has nothing there)
  *   Start (Options, Menu, +)   = START/PAUSE
  *   left stick / right stick / d-pad = control stick / C stick / +Control Pad
- * SDL's Nintendo "button labels" layout is kept on, so a Switch pad maps by
- * label like Nintendo's own ports: the button labelled A (right) is GC A.
+ * Face buttons map by the label printed on the pad (SDL_GetGamepadButtonLabel),
+ * so a Switch pad maps like Nintendo's own ports: the button labelled A (right)
+ * is GC A.  See sdl_button_to_pad.
  *
- * Pads are hot-plugged: SDL_CONTROLLERDEVICEADDED / SDL_JOYDEVICEADDED open a
+ * Pads are hot-plugged: SDL_EVENT_GAMEPAD_ADDED / SDL_EVENT_JOYSTICK_ADDED open a
  * new pad in the first free port (1-4), *_REMOVED closes it and frees its
  * port; the other players keep theirs.  Joysticks without an SDL controller
  * mapping get a generic DirectInput-style mapping.  The keyboard always
@@ -21,8 +22,7 @@
 #include "button_prompts.h"
 #include "gc_stick.h"
 #include "pad_config.h"
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gamecontroller.h>
+#include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -44,10 +44,10 @@ int32_t frames_since_last_input_change[MAX_CONTROLLERS] = {0};
 
 /* One GC pad port */
 typedef struct {
-    SDL_GameController* gc;   /* pad with an SDL controller mapping, or */
+    SDL_Gamepad* gc;          /* pad with an SDL gamepad mapping, or */
     SDL_Joystick* joy;        /* a raw joystick (generic mapping) */
-    SDL_JoystickID id;        /* SDL instance id; -1 = port empty */
-    int type;                 /* SDL_GameControllerType; -1 for raw joysticks */
+    int32_t id;               /* SDL joystick instance id; -1 = port empty */
+    int type;                 /* SDL_GamepadType; -1 for raw joysticks */
     uint8_t trig_click[2];    /* digital L / R state of the triggers */
     uint16_t engaged;         /* buttons / deflected axes last frame */
     char guid[40];            /* SDL GUID: key of the stick settings */
@@ -78,17 +78,17 @@ int pc_input_esc_pressed(void) { return s_esc_pressed; }
 /* Keyboard to gamepad mapping for player 1 (legacy input_on_key_* API; the
  * live keyboard mapping is kbmap in input_poll_gc_pads) */
 static int s_keyboard_map[INPUT_GAMEPAD_MAX] = {
-    SDLK_z,       /* A */
-    SDLK_x,       /* B */
-    SDLK_c,       /* X */
-    SDLK_v,       /* Y */
+    SDLK_Z,       /* A */
+    SDLK_X,       /* B */
+    SDLK_C,       /* X */
+    SDLK_V,       /* Y */
     SDLK_ESCAPE,  /* BACK */
     SDLK_TAB,     /* GUIDE */
     SDLK_RETURN,  /* START */
     SDLK_LSHIFT,  /* LEFT_STICK */
     SDLK_RSHIFT,  /* RIGHT_STICK */
-    SDLK_q,       /* LEFT_SHOULDER (L) */
-    SDLK_e,       /* RIGHT_SHOULDER (R) */
+    SDLK_Q,       /* LEFT_SHOULDER (L) */
+    SDLK_E,       /* RIGHT_SHOULDER (R) */
     SDLK_UP,      /* DPAD_UP */
     SDLK_DOWN,    /* DPAD_DOWN */
     SDLK_LEFT,    /* DPAD_LEFT */
@@ -97,22 +97,24 @@ static int s_keyboard_map[INPUT_GAMEPAD_MAX] = {
 
 static const char* type_name(int type) {
     switch (type) {
-    case SDL_CONTROLLER_TYPE_XBOX360: return "Xbox 360";
-    case SDL_CONTROLLER_TYPE_XBOXONE: return "Xbox One/Series";
-    case SDL_CONTROLLER_TYPE_PS3: return "PS3";
-    case SDL_CONTROLLER_TYPE_PS4: return "PS4";
-    case SDL_CONTROLLER_TYPE_PS5: return "PS5";
-    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO: return "Switch Pro";
-    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_LEFT: return "Joy-Con (L)";
-    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT: return "Joy-Con (R)";
-    case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return "Joy-Con pair";
+    case SDL_GAMEPAD_TYPE_STANDARD: return "standard";
+    case SDL_GAMEPAD_TYPE_XBOX360: return "Xbox 360";
+    case SDL_GAMEPAD_TYPE_XBOXONE: return "Xbox One/Series";
+    case SDL_GAMEPAD_TYPE_PS3: return "PS3";
+    case SDL_GAMEPAD_TYPE_PS4: return "PS4";
+    case SDL_GAMEPAD_TYPE_PS5: return "PS5";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO: return "Switch Pro";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT: return "Joy-Con (L)";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT: return "Joy-Con (R)";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return "Joy-Con pair";
+    case SDL_GAMEPAD_TYPE_GAMECUBE: return "GameCube";
     case -1: return "joystick, no controller mapping";
     }
     return "other";
 }
 
 static const char* pad_name(const PadPort* p) {
-    const char* n = p->gc ? SDL_GameControllerName(p->gc) : p->joy ? SDL_JoystickName(p->joy) : NULL;
+    const char* n = p->gc ? SDL_GetGamepadName(p->gc) : p->joy ? SDL_GetJoystickName(p->joy) : NULL;
     return n ? n : "pad";
 }
 
@@ -124,53 +126,55 @@ static void clear_port_status(int port) {
     s->analogA = s->analogB = 0;
 }
 
-/* A device appeared (SDL device index): open it in the first free port.
+/* A device appeared (SDL joystick instance id): open it in the first free port.
  * Called for every pad at start-up and again for SDL's ADDED events, which
  * also arrive for pads present at start-up, so known pads are skipped. */
 /* Script token VADD*2: the script's virtual pad skips port 1 (so the
  * keyboard/script keeps player 1 and the virtual pad is player 2). */
 static int s_vpad_skip_port1;
 
-void input_on_device_added(int device_index) {
-    SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(device_index);
+void input_on_device_added(unsigned int instance_id) {
+    SDL_JoystickID id = (SDL_JoystickID)instance_id;
     PadPort* p = NULL;
+    const char* dname;
     int i;
 
-    if (id < 0) return;
+    if (id == 0) return;
     for (i = 0; i < MAX_CONTROLLERS; i++)
-        if (s_ports[i].id == id) return;   /* already open */
-    for (i = (s_vpad_skip_port1 && SDL_JoystickIsVirtual(device_index)) ? 1 : 0; i < MAX_CONTROLLERS; i++)
+        if (s_ports[i].id == (int32_t)id) return;   /* already open */
+    for (i = (s_vpad_skip_port1 && SDL_IsJoystickVirtual(id)) ? 1 : 0; i < MAX_CONTROLLERS; i++)
         if (s_ports[i].id < 0) { p = &s_ports[i]; break; }
+    dname = SDL_GetJoystickNameForID(id);
     if (!p) {
-        static SDL_JoystickID s_told = -1;
-        if (s_told != id)
-            printf("[input] %s connected, but all 4 ports are in use\n",
-                   SDL_JoystickNameForIndex(device_index) ? SDL_JoystickNameForIndex(device_index) : "pad");
-        s_told = id;
+        static int32_t s_told = -1;
+        if (s_told != (int32_t)id)
+            printf("[input] %s connected, but all 4 ports are in use\n", dname ? dname : "pad");
+        s_told = (int32_t)id;
         return;
     }
     memset(p, 0, sizeof *p);
     p->id = -1;
-    if (SDL_IsGameController(device_index)) {
-        p->gc = SDL_GameControllerOpen(device_index);
+    if (SDL_IsGamepad(id)) {
+        SDL_Joystick* gj;
+        p->gc = SDL_OpenGamepad(id);
         if (!p->gc) {
-            fprintf(stderr, "[input] cannot open controller %d: %s\n", device_index, SDL_GetError());
+            fprintf(stderr, "[input] cannot open controller %u: %s\n", (unsigned)id, SDL_GetError());
             return;
         }
-        p->type = (int)SDL_GameControllerGetType(p->gc);
-        p->id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(p->gc));
-        SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(SDL_GameControllerGetJoystick(p->gc)),
-                                  p->guid, sizeof p->guid);
+        p->type = (int)SDL_GetGamepadType(p->gc);
+        gj = SDL_GetGamepadJoystick(p->gc);
+        p->id = (int32_t)SDL_GetJoystickID(gj);
+        SDL_GUIDToString(SDL_GetJoystickGUID(gj), p->guid, sizeof p->guid);
     } else {
         char guid[64];
-        p->joy = SDL_JoystickOpen(device_index);
+        p->joy = SDL_OpenJoystick(id);
         if (!p->joy) {
-            fprintf(stderr, "[input] cannot open joystick %d: %s\n", device_index, SDL_GetError());
+            fprintf(stderr, "[input] cannot open joystick %u: %s\n", (unsigned)id, SDL_GetError());
             return;
         }
         p->type = -1;
-        p->id = SDL_JoystickInstanceID(p->joy);
-        SDL_JoystickGetGUIDString(SDL_JoystickGetGUID(p->joy), guid, sizeof guid);
+        p->id = (int32_t)SDL_GetJoystickID(p->joy);
+        SDL_GUIDToString(SDL_GetJoystickGUID(p->joy), guid, sizeof guid);
         snprintf(p->guid, sizeof p->guid, "%s", guid);
         printf("[input] no controller mapping for GUID %s: using a generic layout "
                "(a gamecontrollerdb.txt next to the exe can add one)\n", guid);
@@ -184,53 +188,56 @@ void input_on_device_added(int device_index) {
 }
 
 /* A device went away (SDL instance id): close it and free its port. */
-void input_on_device_removed(int instance_id) {
+void input_on_device_removed(unsigned int instance_id) {
     int i;
     for (i = 0; i < MAX_CONTROLLERS; i++) {
         PadPort* p = &s_ports[i];
-        if (p->id < 0 || p->id != instance_id) continue;
+        if (p->id < 0 || p->id != (int32_t)instance_id) continue;
         printf("[input] port %d: %s disconnected\n", i + 1, pad_name(p));
-        if (p->gc) SDL_GameControllerClose(p->gc);
-        if (p->joy) SDL_JoystickClose(p->joy);
+        if (p->gc) SDL_CloseGamepad(p->gc);
+        if (p->joy) SDL_CloseJoystick(p->joy);
         memset(p, 0, sizeof *p);
         p->id = -1;
         clear_port_status(i);   /* nothing stays held */
         if (s_active == i) s_active = ACTIVE_NONE;
         /* a pad that found all ports taken can have this one now */
         {
-            int d, n = SDL_NumJoysticks();
-            for (d = 0; d < n; d++)
-                if (SDL_JoystickGetDeviceInstanceID(d) != instance_id)
-                    input_on_device_added(d);
+            int d, n = 0;
+            SDL_JoystickID* ids = SDL_GetJoysticks(&n);
+            for (d = 0; ids && d < n; d++)
+                if (ids[d] != (SDL_JoystickID)instance_id)
+                    input_on_device_added(ids[d]);
+            SDL_free(ids);
         }
         return;
     }
 }
 
 void input_init(void) {
-    int i, n;
+    int i, n = 0;
+    SDL_JoystickID* ids;
 
     for (i = 0; i < MAX_CONTROLLERS; i++)
         s_ports[i].id = -1;
 
-    /* Nintendo pads map by label, as Nintendo's own ports do: the button
-     * labelled A (right) is GC A, B (bottom) is GC B (see the top) */
-    SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "1");
+    /* Nintendo pads map by label (see sdl_button_to_pad); SDL3 has no
+     * SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS any more. */
 
-    /* Initialize SDL GameController subsystem */
-    if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) == 0) {
-        if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
-            fprintf(stderr, "SDL_InitSubSystem(GAMECONTROLLER) failed: %s\n", SDL_GetError());
+    /* Initialize SDL gamepad subsystem */
+    if (!SDL_WasInit(SDL_INIT_GAMEPAD)) {
+        if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+            fprintf(stderr, "SDL_InitSubSystem(GAMEPAD) failed: %s\n", SDL_GetError());
         }
     }
 
     /* Load gamecontrollerdb.txt if available */
-    SDL_GameControllerAddMappingsFromFile("gamecontrollerdb.txt");
+    SDL_AddGamepadMappingsFromFile("gamecontrollerdb.txt");
 
     /* Open the pads already connected; later ones arrive as events */
-    n = SDL_NumJoysticks();
-    for (i = 0; i < n; i++)
-        input_on_device_added(i);
+    ids = SDL_GetJoysticks(&n);
+    for (i = 0; ids && i < n; i++)
+        input_on_device_added(ids[i]);
+    SDL_free(ids);
     if (n == 0)
         printf("No gamepads found (keyboard on port 1; pads can be plugged in any time)\n");
     s_keyboard_fallback = true;
@@ -246,27 +253,47 @@ void input_init(void) {
 void input_shutdown(void) {
     for (int i = 0; i < MAX_CONTROLLERS; i++) {
         PadPort* p = &s_ports[i];
-        if (p->gc) SDL_GameControllerClose(p->gc);
-        if (p->joy) SDL_JoystickClose(p->joy);
+        if (p->gc) SDL_CloseGamepad(p->gc);
+        if (p->joy) SDL_CloseJoystick(p->joy);
         memset(p, 0, sizeof *p);
         p->id = -1;
     }
-    SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }
 
-static uint16_t sdl_button_to_pad(int sdl_button) {
+static uint16_t sdl_button_to_pad(SDL_Gamepad* gc, int sdl_button) {
     switch (sdl_button) {
-        case SDL_CONTROLLER_BUTTON_A:             return PAD_BUTTON_A;
-        case SDL_CONTROLLER_BUTTON_B:             return PAD_BUTTON_B;
-        case SDL_CONTROLLER_BUTTON_X:             return PAD_BUTTON_X;
-        case SDL_CONTROLLER_BUTTON_Y:             return PAD_BUTTON_Y;
-        case SDL_CONTROLLER_BUTTON_START:         return PAD_BUTTON_START;
-        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: return PAD_TRIGGER_Z;
-        /* LEFTSHOULDER, BACK, GUIDE, stick clicks: no GC counterpart */
-        case SDL_CONTROLLER_BUTTON_DPAD_UP:       return PAD_BUTTON_UP;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     return PAD_BUTTON_DOWN;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     return PAD_BUTTON_LEFT;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    return PAD_BUTTON_RIGHT;
+        case SDL_GAMEPAD_BUTTON_SOUTH:
+        case SDL_GAMEPAD_BUTTON_EAST:
+        case SDL_GAMEPAD_BUTTON_WEST:
+        case SDL_GAMEPAD_BUTTON_NORTH:
+            /* Face buttons map by the label printed on the pad, as SDL2's
+             * (default on) USE_BUTTON_LABELS did: the button labelled A is GC
+             * A, B is GC B, X is GC X, Y is GC Y.  SDL3 buttons are positional;
+             * SDL_GetGamepadButtonLabel gives what the pad prints there (Xbox
+             * south = A, PlayStation south = Cross, Nintendo south = B, whose A
+             * label is EAST). */
+            switch (SDL_GetGamepadButtonLabel(gc, (SDL_GamepadButton)sdl_button)) {
+            case SDL_GAMEPAD_BUTTON_LABEL_A:
+            case SDL_GAMEPAD_BUTTON_LABEL_CROSS:    return PAD_BUTTON_A;
+            case SDL_GAMEPAD_BUTTON_LABEL_B:
+            case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE:   return PAD_BUTTON_B;
+            case SDL_GAMEPAD_BUTTON_LABEL_X:
+            case SDL_GAMEPAD_BUTTON_LABEL_SQUARE:   return PAD_BUTTON_X;
+            case SDL_GAMEPAD_BUTTON_LABEL_Y:
+            case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return PAD_BUTTON_Y;
+            default: break;   /* unlabelled: by position */
+            }
+            return sdl_button == SDL_GAMEPAD_BUTTON_SOUTH ? PAD_BUTTON_A :
+                   sdl_button == SDL_GAMEPAD_BUTTON_EAST  ? PAD_BUTTON_B :
+                   sdl_button == SDL_GAMEPAD_BUTTON_WEST  ? PAD_BUTTON_X : PAD_BUTTON_Y;
+        case SDL_GAMEPAD_BUTTON_START:          return PAD_BUTTON_START;
+        case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return PAD_TRIGGER_Z;
+        /* LEFT_SHOULDER, BACK, GUIDE, stick clicks: no GC counterpart */
+        case SDL_GAMEPAD_BUTTON_DPAD_UP:        return PAD_BUTTON_UP;
+        case SDL_GAMEPAD_BUTTON_DPAD_DOWN:      return PAD_BUTTON_DOWN;
+        case SDL_GAMEPAD_BUTTON_DPAD_LEFT:      return PAD_BUTTON_LEFT;
+        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:     return PAD_BUTTON_RIGHT;
         default: return 0;
     }
 }
@@ -304,17 +331,17 @@ static void read_port(int port) {
     int b;
 
     if (p->gc) {
-        SDL_GameController* gc = p->gc;
-        for (b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++)
-            if (SDL_GameControllerGetButton(gc, (SDL_GameControllerButton)b))
-                buttons |= sdl_button_to_pad(b);
-        map_stick(p, GCS_MAIN, SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_LEFTX),
-                  SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_LEFTY), &curr->stickX, &curr->stickY);
-        map_stick(p, GCS_C, SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_RIGHTX),
-                  SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_RIGHTY), &curr->substickX, &curr->substickY);
-        curr->triggerLeft = trigger_axis(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_TRIGGERLEFT),
+        SDL_Gamepad* gc = p->gc;
+        for (b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; b++)
+            if (SDL_GetGamepadButton(gc, (SDL_GamepadButton)b))
+                buttons |= sdl_button_to_pad(gc, b);
+        map_stick(p, GCS_MAIN, SDL_GetGamepadAxis(gc, SDL_GAMEPAD_AXIS_LEFTX),
+                  SDL_GetGamepadAxis(gc, SDL_GAMEPAD_AXIS_LEFTY), &curr->stickX, &curr->stickY);
+        map_stick(p, GCS_C, SDL_GetGamepadAxis(gc, SDL_GAMEPAD_AXIS_RIGHTX),
+                  SDL_GetGamepadAxis(gc, SDL_GAMEPAD_AXIS_RIGHTY), &curr->substickX, &curr->substickY);
+        curr->triggerLeft = trigger_axis(SDL_GetGamepadAxis(gc, SDL_GAMEPAD_AXIS_LEFT_TRIGGER),
                                          &p->trig_click[0], &buttons, PAD_TRIGGER_L);
-        curr->triggerRight = trigger_axis(SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_TRIGGERRIGHT),
+        curr->triggerRight = trigger_axis(SDL_GetGamepadAxis(gc, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER),
                                           &p->trig_click[1], &buttons, PAD_TRIGGER_R);
     } else if (p->joy) {
         /* Generic DirectInput layout: buttons 1-4 = face (south, east, west,
@@ -326,20 +353,20 @@ static void read_port(int port) {
             0, PAD_TRIGGER_Z, PAD_TRIGGER_L, PAD_TRIGGER_R, 0, PAD_BUTTON_START,
         };
         SDL_Joystick* j = p->joy;
-        int nb = SDL_JoystickNumButtons(j), na = SDL_JoystickNumAxes(j);
+        int nb = SDL_GetNumJoystickButtons(j), na = SDL_GetNumJoystickAxes(j);
         for (b = 0; b < nb && b < 10; b++)
-            if (SDL_JoystickGetButton(j, b)) buttons |= bmap[b];
-        if (SDL_JoystickNumHats(j) > 0) {
-            Uint8 h = SDL_JoystickGetHat(j, 0);
+            if (SDL_GetJoystickButton(j, b)) buttons |= bmap[b];
+        if (SDL_GetNumJoystickHats(j) > 0) {
+            Uint8 h = SDL_GetJoystickHat(j, 0);
             if (h & SDL_HAT_UP)    buttons |= PAD_BUTTON_UP;
             if (h & SDL_HAT_DOWN)  buttons |= PAD_BUTTON_DOWN;
             if (h & SDL_HAT_LEFT)  buttons |= PAD_BUTTON_LEFT;
             if (h & SDL_HAT_RIGHT) buttons |= PAD_BUTTON_RIGHT;
         }
-        map_stick(p, GCS_MAIN, na > 0 ? SDL_JoystickGetAxis(j, 0) : 0,
-                  na > 1 ? SDL_JoystickGetAxis(j, 1) : 0, &curr->stickX, &curr->stickY);
-        map_stick(p, GCS_C, na > 2 ? SDL_JoystickGetAxis(j, 2) : 0,
-                  na > 3 ? SDL_JoystickGetAxis(j, 3) : 0, &curr->substickX, &curr->substickY);
+        map_stick(p, GCS_MAIN, na > 0 ? SDL_GetJoystickAxis(j, 0) : 0,
+                  na > 1 ? SDL_GetJoystickAxis(j, 1) : 0, &curr->stickX, &curr->stickY);
+        map_stick(p, GCS_C, na > 2 ? SDL_GetJoystickAxis(j, 2) : 0,
+                  na > 3 ? SDL_GetJoystickAxis(j, 3) : 0, &curr->substickX, &curr->substickY);
         curr->triggerLeft = (buttons & PAD_TRIGGER_L) ? TRIGGER_MAX : 0;
         curr->triggerRight = (buttons & PAD_TRIGGER_R) ? TRIGGER_MAX : 0;
     }
@@ -619,7 +646,7 @@ static void parse_input_script(void) {
 }
 
 /* Script virtual pad (VADD* / VDEL / VB / VLT / VRT tokens) */
-static SDL_JoystickID s_vpad = -1;
+static int32_t s_vpad = -1;   /* instance id of the script's virtual pad */
 
 static void vpad_attach(int kind) {
     static const struct { Uint16 vid, pid; const char* name; } kinds[4] = {
@@ -629,49 +656,45 @@ static void vpad_attach(int kind) {
         { 0x057E, 0x2009, "Virtual Switch Pro pad" },
     };
     SDL_VirtualJoystickDesc desc;
-    int idx;
+    SDL_JoystickID id;
     if (s_vpad >= 0 || kind < 1 || kind > 4) return;
     /* SDL drops joystick input while no window has focus (headless test
      * runs never get focus); the scripted pad has to be read anyway */
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_zero(desc);
-    desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
-    desc.type = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
-    desc.naxes = SDL_CONTROLLER_AXIS_MAX;
-    desc.nbuttons = SDL_CONTROLLER_BUTTON_MAX;
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
     desc.vendor_id = kinds[kind - 1].vid;
     desc.product_id = kinds[kind - 1].pid;
     desc.name = kinds[kind - 1].name;
-    idx = SDL_JoystickAttachVirtualEx(&desc);
-    if (idx < 0) { printf("[vpad] attach failed: %s\n", SDL_GetError()); return; }
-    s_vpad = SDL_JoystickGetDeviceInstanceID(idx);
-    printf("[vpad] attached %s (device %d)\n", desc.name, idx);
+    id = SDL_AttachVirtualJoystick(&desc);
+    if (!id) { printf("[vpad] attach failed: %s\n", SDL_GetError()); return; }
+    s_vpad = (int32_t)id;
+    printf("[vpad] attached %s (instance %u)\n", desc.name, (unsigned)id);
 }
 
 static void vpad_detach(void) {
-    int d, n = SDL_NumJoysticks();
-    for (d = 0; d < n; d++)
-        if (SDL_JoystickGetDeviceInstanceID(d) == s_vpad) {
-            SDL_JoystickDetachVirtual(d);
-            printf("[vpad] detached\n");
-            break;
-        }
+    if (s_vpad >= 0) {
+        SDL_DetachVirtualJoystick((SDL_JoystickID)s_vpad);
+        printf("[vpad] detached\n");
+    }
     s_vpad = -1;
 }
 
 /* Set the virtual pad's state; SDL reports it from the next update on. */
 static void vpad_set(uint32_t buttons, int lt, int rt, const int16_t axes[4]) {
-    SDL_Joystick* j = s_vpad >= 0 ? SDL_JoystickFromInstanceID(s_vpad) : NULL;
+    SDL_Joystick* j = s_vpad >= 0 ? SDL_GetJoystickFromID((SDL_JoystickID)s_vpad) : NULL;
     int b;
     if (!j) return;   /* not opened by the hot-plug code yet */
-    for (b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++)
-        SDL_JoystickSetVirtualButton(j, b, (buttons >> b) & 1);
+    for (b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; b++)
+        SDL_SetJoystickVirtualButton(j, b, ((buttons >> b) & 1) != 0);
     /* the virtual mapping scales the full joystick axis range to the
      * trigger's 0..32767 */
-    SDL_JoystickSetVirtualAxis(j, SDL_CONTROLLER_AXIS_TRIGGERLEFT, (Sint16)(lt * 2 - 32768));
-    SDL_JoystickSetVirtualAxis(j, SDL_CONTROLLER_AXIS_TRIGGERRIGHT, (Sint16)(rt * 2 - 32768));
+    SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, (Sint16)(lt * 2 - 32768));
+    SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, (Sint16)(rt * 2 - 32768));
     for (b = 0; b < 4; b++)   /* LEFTX LEFTY RIGHTX RIGHTY */
-        SDL_JoystickSetVirtualAxis(j, b, axes[b]);
+        SDL_SetJoystickVirtualAxis(j, b, axes[b]);
 }
 
 /* ---- the game's stick processing (GC: g_read_inputs_and_maybe_reset_console,
@@ -762,7 +785,7 @@ void process_inputs(void)
     s_esc_pressed = 0;
 
     /* Poll SDL events and update current status (index 0) */
-    SDL_GameControllerUpdate();
+    SDL_UpdateGamepads();
 
     for (int i = 0; i < MAX_CONTROLLERS; i++) {
         /* PAD_ERR_NO_CONTROLLER (-1) for unplugged ports, as PADRead
@@ -790,7 +813,7 @@ void process_inputs(void)
         };
         static uint16_t prev_kb;
         static int prev_wasd;
-        const Uint8* ks = SDL_GetKeyboardState(NULL);
+        const bool* ks = SDL_GetKeyboardState(NULL);
         PADStatus* curr = &pad_status_groups[0].status[0];
         int pad1 = s_ports[0].id >= 0;
         int wasd = ks[SDL_SCANCODE_W] | ks[SDL_SCANCODE_A] << 1 |
